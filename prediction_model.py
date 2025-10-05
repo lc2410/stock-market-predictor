@@ -3,22 +3,25 @@ import pandas as pd
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.calibration import CalibratedClassifierCV
 from pandas.tseries.offsets import BDay
+import logging
+
+# Suppress informational messages from yfinance on import
+logging.getLogger('yfinance').setLevel(logging.ERROR)
 
 def run_real_time_model(ticker, price_window=1000, div_window=20):
-    # Load historical data
-    print(f"\nFetching data for {ticker}...")
+    # Fetch historical data
     data = yf.Ticker(ticker).history(period="max")
 
     # Validate that data was downloaded
     if data.empty:
         print(f"Error: No data found for ticker '{ticker}'. It may be invalid or delisted.")
-        return
+        return None
 
     # Ensure there's enough data for the longest horizon (1260 days)
     data = data.loc["2010-01-01":].copy()
     if len(data) < 1261: # Need at least 1260 for rolling window + 1 for the target day
         print(f"Error: Not enough historical data for {ticker} to perform analysis (needs data since 2010).")
-        return
+        return None
 
     # ----------------------
     # Price Model
@@ -135,7 +138,7 @@ def run_real_time_model(ticker, price_window=1000, div_window=20):
     # ----------------------
     # Combine results
     # ----------------------
-    combined = pd.DataFrame({
+    return pd.DataFrame({
         "Next_Trading_Day": [next_trading_day.strftime('%Y-%m-%d')],
         "Ticker": [ticker],
         "Price_Predicted": ["Up" if test_price["Price_Predicted"].values[0] == 1 else "Down"],
@@ -147,24 +150,3 @@ def run_real_time_model(ticker, price_window=1000, div_window=20):
         "Forecasted_Dividend": [forecasted_div if pd.notna(next_dividend_date) else "N/A"],
         "Forecasted_Yield (%)": [forecasted_yield if pd.notna(next_dividend_date) else "N/A"]
     })
-
-    print("\n--- Real-Time Next-Day Price + Dividend Forecast ---")
-    print(combined.to_string(index=False))
-    return combined
-
-if __name__ == "__main__":
-    while True:
-        # Prompt user for input
-        ticker_input = input("Please enter a stock ticker symbol (e.g., AAPL, VOO) or type 'quit' to exit: ").upper().strip()
-        
-        # Check if the user wants to quit
-        if ticker_input == 'QUIT':
-            break
-        
-        # Check if input is empty
-        if not ticker_input:
-            print("Ticker cannot be empty. Please try again.")
-            continue
-            
-        # Run the model with the user's ticker
-        run_real_time_model(ticker_input)

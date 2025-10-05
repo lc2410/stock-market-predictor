@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock & Dividend Forecaster</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Stock & Dividend Forecaster</h1>
+        <p>Enter a U.S. stock ticker symbol to get the next-day forecast.</p>
+        <div class="input-group">
+            <input type="text" id="tickerInput" placeholder="e.g., AAPL, VOO, MSFT" autofocus>
+            <button id="predictBtn">Get Forecast</button>
+        </div>
+        <div id="loader" class="loader" style="display: none;"></div>
+        <div id="resultContainer"></div>
+        <div id="errorContainer" class="error-message"></div>
+    </div>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>

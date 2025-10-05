@@ -1,89 +1,103 @@
-# Real-Time Stock & Dividend Forecaster 📈
+# Real-Time Stock & Dividend Forecaster
 
-## 🚀 Overview
-This project provides a real-time, next-day forecast for a stock's closing price and its next dividend payment. It uses a sophisticated machine learning pipeline that analyzes historical data to predict not only the direction (Up/Down) of a movement but also the specific value, complete with a calibrated confidence score for each prediction.
+## Overview
+This project is a full-stack web application that provides a real-time, next-day forecast for a stock's closing price and its next dividend payment. The back-end is powered by a machine learning model built with Python and Scikit-learn, served via a **Flask web framework**. The front-end is a clean, responsive interface built with HTML, CSS, and JavaScript.
 
-The model is designed to be run for any stock ticker available on Yahoo Finance.
+The entire application is designed as an **all-in-one client-server model**, where the Flask server handles both the API requests for predictions and serves the user-facing website.
 
-## 🛠️ Features
+## Application Architecture
+This application follows a monolithic, "all-in-one" server architecture.
+
+![Image of Application Architecture](imgs/stock-market-predictor-arch.png)
+
+1.  **Client (Front-End):** The user's web browser loads the HTML, CSS, and JavaScript files.
+2.  **Server (Back-End):** A Flask application running on a host (like Render) serves the front-end files.
+3.  **API Communication:** The JavaScript on the front-end sends an API request (e.g., `/predict/AAPL`) back to the *same* Flask server, which runs the ML model and returns the prediction as JSON data.
+
+This unified structure simplifies development and deployment.
+
+## Features
+* **Interactive Web Interface:** A user-friendly web UI to get forecasts for any stock ticker.
 * **Dual Forecasting:** Predicts both the next-day stock price and the next dividend payout.
-* **Two-Model System:** For each forecast (price and dividend), it uses a "Director" model to predict the direction and a "Forecaster" model to predict the magnitude.
-* **Calibrated Confidence:** Uses `CalibratedClassifierCV` to provide a more reliable and realistic confidence percentage for its directional predictions.
-* **Coherent Predictions:** A unique alignment step ensures that the forecasted value (e.g., price) is logically consistent with the predicted direction (e.g., Up), preventing contradictory outputs.
-* **Advanced Feature Engineering:** Goes beyond simple price history to analyze volatility, momentum, and price-to-average ratios across multiple time horizons.
-
-## 🤖 The Machine Learning Process
-
-The model's procedure is broken down into two main pipelines: one for price and one for dividends. Both follow a similar logical flow.
-
-### 1. Data Collection
-Historical daily price data (Open, High, Low, Close) and dividend payout history are fetched from **Yahoo Finance** using the `yfinance` library.
-
-### 2. Feature Engineering
-The model creates a rich set of features ("clues") from the raw historical data to find predictive patterns.
-
-* **Price Features:**
-    * **Multi-Horizon Analysis:** It calculates Volatility, Momentum, and Close Price-to-Average Ratios over multiple timeframes: 2 days, 1 week, 2 weeks, 1 month, 3 months, 6 months, 1 year, 2 years, and 5 years.
-    * **Sequential Returns:** It uses the specific daily returns from the last 5 trading days as individual features to capture short-term sequential patterns.
-
-* **Dividend Features:**
-    * **Growth Rate:** The percentage change from the previous one and two dividend payouts.
-    * **Rolling Statistics:** The rolling average and standard deviation over the last 4, 6, and 8 dividend payouts to capture the stability and trend of the dividend policy.
-
-### 3. The "Prediction Team" Model
-For both price and dividends, the model uses a two-part prediction team:
-
-* **The Director (Classifier):** A `CalibratedClassifierCV` wrapping a `RandomForestClassifier`.
-    * **Job:** To predict the binary direction: will the next value be **Up (1)** or **Down (0)**?
-    * **Specialty:** The calibration step ensures the outputted `Confidence (%)` is statistically reliable.
-
-* **The Forecaster (Regressor):** A `RandomForestRegressor`.
-    * **Job:** To predict the **exact numerical value** of the next closing price or dividend amount.
-    * **Specialty:** It provides a precise value forecast based on the same features as the Director.
-
-### 4. Prediction & Alignment
-After both the Director and Forecaster make their initial predictions, a final alignment step ensures the output is logical. For example, if the Director predicts the price will go **Up**, the system guarantees the Forecaster's final output value is higher than the current day's close.
-
-## 🔧 Setup & Installation
-
-Follow these steps to set up and run the project.
-
-**1. Clone the repository:**
-Open your terminal and run the following commands to clone the repository and navigate into the project directory: [https://github.com/lc2410/stock-market-predictor.git](https://github.com/lc2410/stock-market-predictor.git)
-```bash
-git clone https://github.com/lc2410/stock-market-predictor.git
-cd stock-market-predictor
-```
-
-**2. Check Python Version:**
-This script was developed and tested with **Python 3.12.10**. Download python using the link here: [https://www.python.org/downloads/release/python-31210/](https://www.python.org/downloads/release/python-31210/)
-
-**3. Install Required Libraries:**
-The repository includes a `requirements.txt` file that lists all necessary libraries. Install them using pip:
-```bash
-pip install -r requirements.txt
-```
+* **Two-Model System:** Uses a "Director" (Classifier) for direction and a "Forecaster" (Regressor) for magnitude.
+* **Calibrated Confidence:** Provides a reliable confidence percentage for directional predictions using `CalibratedClassifierCV`.
+* **Coherent Predictions:** An alignment step ensures the final value is logically consistent with the predicted direction.
+* **Advanced Feature Engineering:** Analyzes volatility, momentum, and price ratios across multiple time horizons.
 
 ---
-## ▶️ How to Run
+## The Machine Learning Process
 
-To run a forecast, execute the script from your terminal:
-```bash
-python prediction-model.py
-```
-From here it will ask you to type in a stock ticker symbol (e.g., AAPL, VOO) to predict the next day's price and next dividend payout. Once, your done looking at what you need, you can type `quit` to end the session.
+The model's procedure is broken down into two main pipelines: one for price and one for dividends.
 
-## 📊 Sample Output
-The script will print a clean, formatted DataFrame to your console with the final forecast:
+### 1. Data Collection
+Historical daily price data and dividend history are fetched from **Yahoo Finance** using the `yfinance` library.
 
-```
---- Real-Time Next-Day Price + Dividend Forecast (Rounded) ---
-   Next_Trading_Day   Close  Price_Predicted  Price_Confidence (%)  Forecasted_Close Next_Dividend_Date  Div_Predicted  Div_Confidence (%)  Forecasted_Dividend  Forecasted_Yield (%)
-0        2025-10-06  485.55                1                 62.34            487.12         2025-09-26              1               75.50                 1.85                  0.38
-```
+### 2. Feature Engineering
+The model creates a rich set of features ("clues") from the raw historical data.
+* **Price Features:** Multi-horizon analysis of Volatility, Momentum, and Price Ratios (from 2 days to 5 years), plus the specific returns of the last 5 days.
+* **Dividend Features:** Growth rates and rolling statistics over the last 4, 6, and 8 dividend payouts.
 
-## 📚 Core Technologies
-* **Python 3.12.10**
-* **Pandas:** For data manipulation and analysis.
-* **Scikit-learn:** For building and training the machine learning models.
-* **yfinance:** For sourcing historical stock and dividend data.
+### 3. The "Prediction Team" Model
+* **The Director (Classifier):** A `CalibratedClassifierCV` wrapping a `RandomForestClassifier` to predict the binary direction (Up/Down).
+* **The Forecaster (Regressor):** A `RandomForestRegressor` to predict the exact numerical value of the price or dividend.
+
+### 4. Prediction & Alignment
+A final step ensures the Forecaster's output value is logically consistent with the Director's predicted direction.
+
+---
+## Setup & How to Run
+
+You can run this application locally for development or deploy it to the web.
+
+### Local Development
+1.  **Clone the repository:**
+    ```bash
+    git clone [https://github.com/lc2410/stock-market-predictor.git](https://github.com/lc2410/stock-market-predictor.git)
+    cd stock-market-predictor
+    ```
+
+2.  **Check Python Version:**
+    This script was developed and tested with **Python 3.12.10**.
+
+3.  **Install Required Libraries:**
+    Install all necessary packages using the `requirements.txt` file.
+    ```bash
+    pip install -r requirements.txt
+    ```
+4.  **Run the Flask Server:**
+    Execute the `app.py` file to start the local development server.
+    ```bash
+    python app.py
+    ```
+5.  **View the Application:**
+    Open your web browser and navigate to **`http://12.0.0.1:5001`**.
+
+### Deployment to the Web (Free)
+This application is ready for a simple, one-click deployment using Render.
+
+1.  **Push to GitHub:** Make sure your latest code is pushed to your GitHub repository.
+2.  **Deploy to Render:**
+    * Sign up for a free account at **Render.com** and connect it to your GitHub account.
+    * On the Render dashboard, click **New +** and select **Web Service**.
+    * Choose your `stock-market-predictor` repository.
+    * Render will automatically detect the settings from your `requirements.txt` and `Procfile`. Confirm the following:
+        * **Runtime:** `Python 3`
+        * **Build Command:** `pip install -r requirements.txt`
+        * **Start Command:** `gunicorn app:app`
+    * Ensure you are on the **Free** plan.
+    * Click **Create Web Service**.
+
+Render will build and deploy your application. Once it's "Live", you can visit the provided URL to use your stock forecaster.
+
+---
+## Sample Output
+The application provides a clean, responsive web interface for displaying the forecast.
+
+
+
+---
+## Core Technologies
+* **Back-End:** Python, Flask, Gunicorn
+* **Machine Learning:** Scikit-learn, Pandas
+* **Data Sourcing:** yfinance
+* **Front-End:** HTML5, CSS3, JavaScript
