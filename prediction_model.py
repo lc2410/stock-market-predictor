@@ -51,8 +51,10 @@ def run_real_time_model(ticker, price_window=1000, div_window=20):
 
     # Predicts price direction (Up/Down) and calibrates confidence
     calibrated_price_clf = CalibratedClassifierCV(
-        RandomForestClassifier(n_estimators=300, max_depth=10, min_samples_split=10, random_state=1),
-        method='isotonic', cv=5
+        RandomForestClassifier(n_estimators=300, max_depth=10, min_samples_split=10, random_state=1, n_jobs=1),
+        method='isotonic', 
+        cv=5,
+        n_jobs=1
     )
     calibrated_price_clf.fit(train_price[price_predictors], train_price["Price_Target"])
     test_price["Price_Predicted"] = calibrated_price_clf.predict(test_price[price_predictors])
@@ -60,7 +62,7 @@ def run_real_time_model(ticker, price_window=1000, div_window=20):
     test_price["Price_Confidence (%)"] = round(price_conf*100,2)
 
     # Forecasts the exact closing price
-    price_reg = RandomForestRegressor(n_estimators=300, max_depth=10, min_samples_split=10, random_state=1)
+    price_reg = RandomForestRegressor(n_estimators=300, max_depth=10, min_samples_split=10, random_state=1, n_jobs=1)
     price_reg.fit(train_price[price_predictors], train_price["Tomorrow"])
     forecasted_close = price_reg.predict(test_price[price_predictors])[0]
 
@@ -112,15 +114,17 @@ def run_real_time_model(ticker, price_window=1000, div_window=20):
 
         # Predicts dividend direction (Up/Down) and calibrates confidence
         calibrated_div_clf = CalibratedClassifierCV(
-            RandomForestClassifier(n_estimators=200, min_samples_split=2, random_state=1),
-            method='isotonic', cv=5
+            RandomForestClassifier(n_estimators=200, min_samples_split=2, random_state=1, n_jobs=1),
+            method='isotonic', 
+            cv=5,
+            n_jobs=1
         )
         calibrated_div_clf.fit(train_div[div_predictors], train_div["Div_Target"])
         div_pred = calibrated_div_clf.predict(test_div[div_predictors])[0]
         div_conf = calibrated_div_clf.predict_proba(test_div[div_predictors])[0,1]
         
         # Forecasts the exact dividend amount
-        div_reg = RandomForestRegressor(n_estimators=200, min_samples_split=2, random_state=1)
+        div_reg = RandomForestRegressor(n_estimators=200, min_samples_split=2, random_state=1, n_jobs=1)
         div_reg.fit(train_div[div_predictors], train_div["Next_Dividend"])
         forecasted_div = div_reg.predict(test_div[div_predictors])[0]
 
