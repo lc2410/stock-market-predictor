@@ -3,18 +3,20 @@ import pandas as pd
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.calibration import CalibratedClassifierCV
 from pandas.tseries.offsets import BDay
+from datetime import date
 import logging
 
 # Suppress informational messages from yfinance on import
 logging.getLogger('yfinance').setLevel(logging.ERROR)
 
-def run_real_time_model(ticker, price_window=750, div_window=20):
+def run_real_time_model(ticker, price_window=1000, div_window=20):
     # Fetch historical data
-    data = yf.Ticker(ticker).history(period="max")
+    stock_ticker = yf.Ticker(ticker)
+    data = stock_ticker.history(period="max")
 
     # Validate that data was downloaded
     if data.empty:
-        print(f"Error: No data found for ticker '{ticker}'. It may be invalid or delisted.")
+        print(f"Error: No data found for ticker '{ticker}'.")
         return None
 
     # Ensure there's enough data for the longest horizon (1260 days)
@@ -50,19 +52,14 @@ def run_real_time_model(ticker, price_window=750, div_window=20):
     test_price = price_data.iloc[-1:].copy()
 
     # Predicts price direction (Up/Down) and calibrates confidence
-    calibrated_price_clf = CalibratedClassifierCV(
-        RandomForestClassifier(n_estimators=80, max_depth=10, min_samples_split=10, random_state=1, n_jobs=1),
-        method='isotonic', 
-        cv=5,
-        n_jobs=1
-    )
+    price_clf = RandomForestClassifier(n_estimators=150, max_depth=10, min_samples_split=10, random_state=1, n_jobs=1)
+    calibrated_price_clf = CalibratedClassifierCV(price_clf, method='isotonic', cv=5, n_jobs=1)
     calibrated_price_clf.fit(train_price[price_predictors], train_price["Price_Target"])
     test_price["Price_Predicted"] = calibrated_price_clf.predict(test_price[price_predictors])
     price_conf = calibrated_price_clf.predict_proba(test_price[price_predictors])[0,1]
-    test_price["Price_Confidence (%)"] = round(price_conf*100,2)
 
     # Forecasts the exact closing price
-    price_reg = RandomForestRegressor(n_estimators=80, max_depth=10, min_samples_split=10, random_state=1, n_jobs=1)
+    price_reg = RandomForestRegressor(n_estimators=150, max_depth=10, min_samples_split=10, random_state=1, n_jobs=1)
     price_reg.fit(train_price[price_predictors], train_price["Tomorrow"])
     forecasted_close = price_reg.predict(test_price[price_predictors])[0]
 
@@ -73,24 +70,34 @@ def run_real_time_model(ticker, price_window=750, div_window=20):
     else:
         forecasted_close = min(forecasted_close, today_close * 0.999)
     forecasted_close = round(forecasted_close, 2)
-    test_price["Forecasted_Close"] = forecasted_close
 
-    next_trading_day = test_price.index[0] + BDay(1)
+    today = pd.to_datetime(date.today())
+    next_trading_day = today + BDay(1)
 
     # ----------------------
     # Dividend Model
     # ----------------------
     divs = data[["Dividends"]].copy()
     divs = divs[divs["Dividends"] > 0].copy()
-
+    
     # Handle cases with insufficient dividend data
     if len(divs) < 10:
-        print("\n--- Not enough dividend data to make a forecast. ---")
-        forecasted_div = 0
-        div_conf = 0
-        div_pred = 0
-        next_dividend_date = pd.NaT
+        forecasted_div, div_conf, div_pred, next_dividend_date = 0, 0, 0, pd.NaT
     else:
+        # Project the next dividend date using a heuristic based on past dividend frequency
+        today = pd.to_datetime(date.today())
+        last_div_date = divs.index[-1].tz_localize(None)
+        dividend_dates = divs.index.to_series()
+        avg_days_between_divs = dividend_dates.diff().mean().days
+        
+        projected_date = last_div_date + pd.Timedelta(days=avg_days_between_divs)
+        
+        # If the projected date has already passed, keep adding the interval until it's in the future
+        while projected_date < today:
+            projected_date += pd.Timedelta(days=avg_days_between_divs)
+        next_dividend_date = projected_date
+
+        # Dividend ML model for amount and direction
         divs["Next_Dividend"] = divs["Dividends"].shift(-1)
         divs["Div_Target"] = (divs["Next_Dividend"] > divs["Dividends"]).astype(int)
 
@@ -113,18 +120,14 @@ def run_real_time_model(ticker, price_window=750, div_window=20):
         test_div = divs.iloc[-1:].copy()
 
         # Predicts dividend direction (Up/Down) and calibrates confidence
-        calibrated_div_clf = CalibratedClassifierCV(
-            RandomForestClassifier(n_estimators=80, min_samples_split=2, random_state=1, n_jobs=1),
-            method='isotonic', 
-            cv=5,
-            n_jobs=1
-        )
+        div_clf = RandomForestClassifier(n_estimators=100, min_samples_split=2, random_state=1, n_jobs=1)
+        calibrated_div_clf = CalibratedClassifierCV(div_clf, method='isotonic', cv=5, n_jobs=1)
         calibrated_div_clf.fit(train_div[div_predictors], train_div["Div_Target"])
         div_pred = calibrated_div_clf.predict(test_div[div_predictors])[0]
         div_conf = calibrated_div_clf.predict_proba(test_div[div_predictors])[0,1]
         
         # Forecasts the exact dividend amount
-        div_reg = RandomForestRegressor(n_estimators=80, min_samples_split=2, random_state=1, n_jobs=1)
+        div_reg = RandomForestRegressor(n_estimators=100, min_samples_split=2, random_state=1, n_jobs=1)
         div_reg.fit(train_div[div_predictors], train_div["Next_Dividend"])
         forecasted_div = div_reg.predict(test_div[div_predictors])[0]
 
@@ -135,7 +138,6 @@ def run_real_time_model(ticker, price_window=750, div_window=20):
         else:
             forecasted_div = min(forecasted_div, today_div * 0.999)
         forecasted_div = round(forecasted_div, 2)
-        next_dividend_date = test_div.index[0]
         
     forecasted_yield = round((forecasted_div / today_close) * 100, 2) if today_close > 0 else 0
 
@@ -149,7 +151,7 @@ def run_real_time_model(ticker, price_window=750, div_window=20):
         "Price_Confidence (%)": [round(price_conf*100,2)],
         "Forecasted_Close": [forecasted_close],
         "Next_Dividend_Date": [next_dividend_date.strftime('%Y-%m-%d') if pd.notna(next_dividend_date) else "N/A"],
-        "Div_Predicted": ["Up" if div_pred == 1 else "Down" if next_dividend_date != "N/A" and forecasted_div > 0 else "N/A"],
+        "Div_Predicted": ["Up" if div_pred == 1 else "Down" if pd.notna(next_dividend_date) and forecasted_div > 0 else "N/A"],
         "Div_Confidence (%)": [round(div_conf*100,2) if pd.notna(next_dividend_date) else "N/A"],
         "Forecasted_Dividend": [forecasted_div if pd.notna(next_dividend_date) else "N/A"],
         "Forecasted_Yield (%)": [forecasted_yield if pd.notna(next_dividend_date) else "N/A"]
