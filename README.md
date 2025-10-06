@@ -90,10 +90,10 @@ This application is ready for a simple, one-click deployment using Render.
 Render will build and deploy your application. Once it's "Live", you can visit the provided URL to use your stock forecaster.
 
 ---
-## Sample Output
+## Sample Output and Running Application
 The application provides a clean, responsive web interface for displaying the forecast.
 
-
+You can access a live version of the app here [https://stock-market-predictor-i6ql.onrender.com](https://stock-market-predictor-i6ql.onrender.com)
 
 ---
 ## Core Technologies
