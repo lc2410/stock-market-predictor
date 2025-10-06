@@ -19,6 +19,8 @@ This unified structure simplifies development and deployment.
 ## Features
 * **Interactive Web Interface:** A user-friendly web UI to get forecasts for any stock ticker.
 * **Dual Forecasting:** Predicts both the next-day stock price and the next dividend payout.
+* **Robust Price Date Logic:** Automatically calculates the next actual trading day by skipping weekends and market holidays (specifically US Federal Holidays).
+* **Projected Dividend Date:** Forecasts the next potential dividend date by calculating the average time between all historical payouts and projecting that interval into the future.
 * **Two-Model System:** Uses a "Director" (Classifier) for direction and a "Forecaster" (Regressor) for magnitude.
 * **Calibrated Confidence:** Provides a reliable confidence percentage for directional predictions using `CalibratedClassifierCV`.
 * **Coherent Predictions:** An alignment step ensures the final value is logically consistent with the predicted direction.

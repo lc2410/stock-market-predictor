@@ -2,7 +2,8 @@ import yfinance as yf
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.calibration import CalibratedClassifierCV
-from pandas.tseries.offsets import BDay
+from pandas.tseries.offsets import BDay, CustomBusinessDay
+from pandas.tseries.holiday import USFederalHolidayCalendar
 from datetime import date
 import logging
 
@@ -71,8 +72,10 @@ def run_real_time_model(ticker, price_window=1000, div_window=20):
         forecasted_close = min(forecasted_close, today_close * 0.999)
     forecasted_close = round(forecasted_close, 2)
 
+    us_holidays = USFederalHolidayCalendar()
+    us_business_day = CustomBusinessDay(calendar=us_holidays)
     today = pd.to_datetime(date.today())
-    next_trading_day = today + BDay(1)
+    next_trading_day = today + us_business_day
 
     # ----------------------
     # Dividend Model
