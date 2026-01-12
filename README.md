@@ -72,7 +72,7 @@ You can run this application locally for development or deploy it to the web.
     python app.py
     ```
 5.  **View the Application:**
-    Open your web browser and navigate to **`http://12.0.0.1:5001`**.
+    Open your web browser and navigate to **`http://127.0.0.1:5001`**.
 
 ### Deployment to the Web (Free)
 This application is ready for a simple, one-click deployment using Render.
