@@ -1,2 +1,3 @@
-/stock-market-project-env
+/stock-market-predictor-env
 /__pycache__
+.DS_Store

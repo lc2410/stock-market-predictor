@@ -2,13 +2,67 @@ import yfinance as yf
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.calibration import CalibratedClassifierCV
-from pandas.tseries.offsets import BDay, CustomBusinessDay
+from pandas.tseries.offsets import CustomBusinessDay
 from pandas.tseries.holiday import USFederalHolidayCalendar
 from datetime import date
 import logging
 
 # Suppress informational messages from yfinance on import
 logging.getLogger('yfinance').setLevel(logging.ERROR)
+
+# --- HELPER FUNCTIONS ---
+
+def get_next_trading_day():
+    """
+    Calculates the next trading day using the US Federal Holiday calendar.
+    Skips weekends and official holidays.
+    """
+    us_holidays = USFederalHolidayCalendar()
+    us_business_day = CustomBusinessDay(calendar=us_holidays)
+    
+    today = pd.to_datetime(date.today())
+    next_day = today + us_business_day
+    
+    return next_day.strftime('%Y-%m-%d')
+
+def get_chart_data(ticker_symbol, predicted_price=None):
+    """
+    Fetches 6mo history and appends the predicted price for the next day.
+    """
+    try:
+        ticker = yf.Ticker(ticker_symbol)
+        
+        # 1. Price History (6 months)
+        hist = ticker.history(period="6mo")
+        
+        # Convert Timestamp index to string dates
+        dates = hist.index.strftime('%Y-%m-%d').tolist()
+        prices = hist['Close'].tolist()
+
+        # 2. Append Future Prediction (if provided)
+        if predicted_price is not None:
+            # Uses the robust holiday logic now
+            next_date = get_next_trading_day() 
+            dates.append(next_date)
+            # Ensure predicted_price is a float
+            prices.append(float(predicted_price))
+
+        # 3. Dividend History (Last 12 payouts)
+        divs = ticker.dividends.tail(12)
+        div_dates = divs.index.strftime('%Y-%m-%d').tolist()
+        div_amounts = divs.values.tolist()
+        
+        return {
+            "dates": dates,
+            "prices": prices,
+            "dividend_dates": div_dates,
+            "dividend_amounts": div_amounts
+        }
+    except Exception as e:
+        print(f"Error fetching chart data: {e}")
+        return None
+
+# --- MAIN MODEL LOGIC ---
 
 def run_real_time_model(ticker, price_window=1000, div_window=20):
     # Fetch historical data
@@ -22,7 +76,7 @@ def run_real_time_model(ticker, price_window=1000, div_window=20):
 
     # Ensure there's enough data for the longest horizon (1260 days)
     data = data.loc["2010-01-01":].copy()
-    if len(data) < 1261: # Need at least 1260 for rolling window + 1 for the target day
+    if len(data) < 1261: 
         print(f"Error: Not enough historical data for {ticker} to perform analysis (needs data since 2010).")
         return None
 
@@ -35,7 +89,7 @@ def run_real_time_model(ticker, price_window=1000, div_window=20):
 
     # Price Features
     price_data["Return"] = price_data["Close"].pct_change()
-    horizons = [2, 5, 10, 20, 63, 126, 252, 504, 1260] # Corresponds to 2d, 1w, 2w, 1m, 3m, 6m, 1y, 2y, 5y
+    horizons = [2, 5, 10, 20, 63, 126, 252, 504, 1260] 
     price_predictors = []
     
     for h in horizons:
@@ -72,10 +126,8 @@ def run_real_time_model(ticker, price_window=1000, div_window=20):
         forecasted_close = min(forecasted_close, today_close * 0.999)
     forecasted_close = round(forecasted_close, 2)
 
-    us_holidays = USFederalHolidayCalendar()
-    us_business_day = CustomBusinessDay(calendar=us_holidays)
-    today = pd.to_datetime(date.today())
-    next_trading_day = today + us_business_day
+    # Use the shared helper function for consistency
+    next_trading_day_str = get_next_trading_day()
 
     # ----------------------
     # Dividend Model
@@ -87,7 +139,7 @@ def run_real_time_model(ticker, price_window=1000, div_window=20):
     if len(divs) < 10:
         forecasted_div, div_conf, div_pred, next_dividend_date = 0, 0, 0, pd.NaT
     else:
-        # Project the next dividend date using a heuristic based on past dividend frequency
+        # Project the next dividend date
         today = pd.to_datetime(date.today())
         last_div_date = divs.index[-1].tz_localize(None)
         dividend_dates = divs.index.to_series()
@@ -95,16 +147,14 @@ def run_real_time_model(ticker, price_window=1000, div_window=20):
         
         projected_date = last_div_date + pd.Timedelta(days=avg_days_between_divs)
         
-        # If the projected date has already passed, keep adding the interval until it's in the future
         while projected_date < today:
             projected_date += pd.Timedelta(days=avg_days_between_divs)
         next_dividend_date = projected_date
 
-        # Dividend ML model for amount and direction
+        # Dividend ML model
         divs["Next_Dividend"] = divs["Dividends"].shift(-1)
         divs["Div_Target"] = (divs["Next_Dividend"] > divs["Dividends"]).astype(int)
 
-        # Dividend Features
         divs["Div_Growth_1"] = divs["Dividends"].pct_change(1)
         divs["Div_Growth_2"] = divs["Dividends"].pct_change(2)
         divs["Rolling_Avg_4"] = divs["Dividends"].rolling(4).mean()
@@ -122,19 +172,36 @@ def run_real_time_model(ticker, price_window=1000, div_window=20):
         train_div = divs.iloc[-(div_window+1):-1]
         test_div = divs.iloc[-1:].copy()
 
-        # Predicts dividend direction (Up/Down) and calibrates confidence
-        div_clf = RandomForestClassifier(n_estimators=100, min_samples_split=2, random_state=1, n_jobs=1)
-        calibrated_div_clf = CalibratedClassifierCV(div_clf, method='isotonic', cv=5, n_jobs=1)
-        calibrated_div_clf.fit(train_div[div_predictors], train_div["Div_Target"])
-        div_pred = calibrated_div_clf.predict(test_div[div_predictors])[0]
-        div_conf = calibrated_div_clf.predict_proba(test_div[div_predictors])[0,1]
+        # Check if we actually have both classes (Up and Down) to train on
+        if train_div["Div_Target"].nunique() <= 1:
+            # If the dividend never changed in the training window, 
+            # we can't train a binary classifier. Default to historical fact.
+            div_pred = train_div["Div_Target"].iloc[0]
+            # If pred is 1, confidence of going up is 1.0. If pred is 0, confidence is 0.0.
+            div_conf = float(div_pred) 
+        else:
+            try:
+                div_clf = RandomForestClassifier(n_estimators=100, min_samples_split=2, random_state=1, n_jobs=1)
+                # Lowering cv to 3 helps prevent folds from missing a class in small 20-row datasets
+                calibrated_div_clf = CalibratedClassifierCV(div_clf, method='isotonic', cv=3, n_jobs=1)
+                calibrated_div_clf.fit(train_div[div_predictors], train_div["Div_Target"])
+                div_pred = calibrated_div_clf.predict(test_div[div_predictors])[0]
+                div_conf = calibrated_div_clf.predict_proba(test_div[div_predictors])[0,1]
+            except ValueError:
+                # Ultimate fallback: If a CV fold still ends up with only 1 class, skip calibration
+                div_clf = RandomForestClassifier(n_estimators=100, min_samples_split=2, random_state=1, n_jobs=1)
+                div_clf.fit(train_div[div_predictors], train_div["Div_Target"])
+                div_pred = div_clf.predict(test_div[div_predictors])[0]
+                # Safely grab probability
+                if len(div_clf.classes_) == 2:
+                    div_conf = div_clf.predict_proba(test_div[div_predictors])[0, 1]
+                else:
+                    div_conf = float(div_pred)
         
-        # Forecasts the exact dividend amount
         div_reg = RandomForestRegressor(n_estimators=100, min_samples_split=2, random_state=1, n_jobs=1)
         div_reg.fit(train_div[div_predictors], train_div["Next_Dividend"])
         forecasted_div = div_reg.predict(test_div[div_predictors])[0]
 
-        # Align dividend regressor
         today_div = test_div["Dividends"].values[0]
         if div_pred == 1:
             forecasted_div = max(forecasted_div, today_div * 1.001)
@@ -147,15 +214,31 @@ def run_real_time_model(ticker, price_window=1000, div_window=20):
     # ----------------------
     # Combine results
     # ----------------------
+    # Determine the word to use for Dividend Direction
+    if pd.isna(next_dividend_date):
+        div_direction_text = "N/A"
+        final_div_conf = "N/A"
+    elif forecasted_div > today_div:
+        div_direction_text = "Up"
+        final_div_conf = round(div_conf * 100, 2)
+    elif forecasted_div < today_div and forecasted_div > 0:
+        div_direction_text = "Down"
+        # If it's going down, confidence is the inverse of the 'Up' probability
+        final_div_conf = round((1 - div_conf) * 100, 2) 
+    else:
+        div_direction_text = "Flat"
+        # If historical data was perfectly flat (triggering our bypass), we are 100% confident it stays flat
+        final_div_conf = 100.0 if train_div["Div_Target"].nunique() <= 1 else round((1 - div_conf) * 100, 2)
+
     return pd.DataFrame({
-        "Next_Trading_Day": [next_trading_day.strftime('%Y-%m-%d')],
+        "Next_Trading_Day": [next_trading_day_str],
         "Ticker": [ticker],
         "Price_Predicted": ["Up" if test_price["Price_Predicted"].values[0] == 1 else "Down"],
         "Price_Confidence (%)": [round(price_conf*100,2)],
         "Forecasted_Close": [forecasted_close],
         "Next_Dividend_Date": [next_dividend_date.strftime('%Y-%m-%d') if pd.notna(next_dividend_date) else "N/A"],
-        "Div_Predicted": ["Up" if div_pred == 1 else "Down" if pd.notna(next_dividend_date) and forecasted_div > 0 else "N/A"],
-        "Div_Confidence (%)": [round(div_conf*100,2) if pd.notna(next_dividend_date) else "N/A"],
+        "Div_Predicted": [div_direction_text],
+        "Div_Confidence (%)": [final_div_conf],
         "Forecasted_Dividend": [forecasted_div if pd.notna(next_dividend_date) else "N/A"],
         "Forecasted_Yield (%)": [forecasted_yield if pd.notna(next_dividend_date) else "N/A"]
     })
