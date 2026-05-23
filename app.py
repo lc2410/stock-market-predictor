@@ -23,9 +23,12 @@ def predict(ticker):
             return jsonify({"error": f"Invalid ticker or insufficient data for {ticker}."}), 404
         
         result = prediction_df.to_dict(orient='records')[0]
-        predicted_price = result.get('Forecasted_Close')
-        chart_data = get_chart_data(ticker, predicted_price)
-        result['Chart_Data'] = chart_data
+        
+        # Get historical chart data WITHOUT adding the single next day
+        chart_data = get_chart_data(ticker, None) 
+        
+        # Send history straight to the frontend to be styled separately
+        result['Chart_History'] = chart_data
 
         app.logger.info(f"Successfully generated prediction for {ticker}.")
         return jsonify(result)

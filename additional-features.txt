@@ -1,3 +1,0 @@
-1. give better visuals (like stock predication graphs)
-2. give specific predictions after 1 week, 1 month, 1 year
-3. give better predictions using more outside data
