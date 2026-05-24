@@ -1,6 +1,6 @@
 from flask import Flask, jsonify, render_template
 from flask_cors import CORS
-from prediction_model import run_real_time_model
+from prediction_model import run_real_time_model, get_chart_data
 import logging
 
 # Configure logging
@@ -23,6 +23,10 @@ def predict(ticker):
             return jsonify({"error": f"Invalid ticker or insufficient data for {ticker}."}), 404
         
         result = prediction_df.to_dict(orient='records')[0]
+        
+        chart_data = get_chart_data(ticker, None)
+        result['Chart_History'] = chart_data
+
         app.logger.info(f"Successfully generated prediction for {ticker}.")
         return jsonify(result)
 
