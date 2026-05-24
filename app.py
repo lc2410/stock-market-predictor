@@ -24,10 +24,7 @@ def predict(ticker):
         
         result = prediction_df.to_dict(orient='records')[0]
         
-        # Get historical chart data WITHOUT adding the single next day
-        chart_data = get_chart_data(ticker, None) 
-        
-        # Send history straight to the frontend to be styled separately
+        chart_data = get_chart_data(ticker, None)
         result['Chart_History'] = chart_data
 
         app.logger.info(f"Successfully generated prediction for {ticker}.")

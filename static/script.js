@@ -1,4 +1,3 @@
-// Register required Chart.js plugins
 Chart.register(Chart.Filler);
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -38,131 +37,120 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.key === 'Enter') handlePrediction();
   });
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // displayResult — builds the HTML shell then hands off to renderCharts
-  // ─────────────────────────────────────────────────────────────────────────
   function displayResult(data) {
-    let html = `
-            <h3>Forecast for ${data.Ticker}</h3>
-            <div class="results-grid">
-                <h4 class="grid-subtitle">Next-Day Price Forecast</h4>
-                <div class="result-item"><strong>Next Trading Day:</strong></div>
-                <div class="result-item">${data.Next_Trading_Day}</div>
-                <div class="result-item"><strong>Price Direction:</strong></div>
-                <div class="result-item ${data.Price_Predicted.toLowerCase()}">${data.Price_Predicted}</div>
-                <div class="result-item"><strong>Price Confidence:</strong></div>
-                <div class="result-item">${data['Price_Confidence (%)']}%</div>
-                <div class="result-item"><strong>Forecasted Close:</strong></div>
-                <div class="result-item">$${data.Forecasted_Close.toFixed(2)}</div>
-                <div class="separator"></div>
-                <h4 class="grid-subtitle">Long-Term Price Projection</h4>
-                <div class="result-item"><strong>1 Week (${data.Extended_Forecasts['1_Week'].Date}):</strong></div>
-                <div class="result-item">$${data.Extended_Forecasts['1_Week'].Price.toFixed(2)}</div>
-                <div class="result-item"><strong>1 Month (${data.Extended_Forecasts['1_Month'].Date}):</strong></div>
-                <div class="result-item">$${data.Extended_Forecasts['1_Month'].Price.toFixed(2)}</div>
-                <div class="result-item"><strong>1 Year (${data.Extended_Forecasts['1_Year'].Date}):</strong></div>
-                <div class="result-item">$${data.Extended_Forecasts['1_Year'].Price.toFixed(2)}</div>
-                <div class="separator"></div>
-                <h4 class="grid-subtitle">Dividend Forecast</h4>
-                ${
-                  data.Next_Dividend_Date === 'N/A'
-                    ? `
-                <div class="result-item" style="grid-column:1/-1;color:#6b7280;font-style:italic;font-size:14px;padding:6px 0;">
-                    This company does not pay dividends to its stakeholders.
-                </div>`
-                    : `
-                <div class="result-item"><strong>Next Dividend Date:</strong></div>
-                <div class="result-item">${data.Next_Dividend_Date}</div>
-                <div class="result-item"><strong>Dividend Direction:</strong></div>
-                <div class="result-item ${data.Div_Predicted.toLowerCase()}">${data.Div_Predicted}</div>
-                <div class="result-item"><strong>Dividend Confidence:</strong></div>
-                <div class="result-item">${data['Div_Confidence (%)'] === 'N/A' ? 'N/A' : data['Div_Confidence (%)'] + '%'}</div>
-                <div class="result-item"><strong>Forecasted Dividend:</strong></div>
-                <div class="result-item">${typeof data.Forecasted_Dividend === 'number' ? '$' + data.Forecasted_Dividend.toFixed(2) : 'N/A'}</div>`
-                }
+    // Dividend section: show a plain message for non-dividend-paying stocks
+    const dividendSection =
+      data.Next_Dividend_Date === 'N/A'
+        ? `
+      <div class="result-item" style="grid-column:1/-1;color:#6b7280;font-style:italic;font-size:14px;padding:6px 0;">
+        This company does not pay dividends to its stakeholders.
+      </div>`
+        : `
+      <div class="result-item"><strong>Next Dividend Date:</strong></div>
+      <div class="result-item">${data.Next_Dividend_Date}</div>
+      <div class="result-item"><strong>Dividend Direction:</strong></div>
+      <div class="result-item ${data.Div_Predicted.toLowerCase()}">${data.Div_Predicted}</div>
+      <div class="result-item"><strong>Dividend Confidence:</strong></div>
+      <div class="result-item">${data['Div_Confidence (%)'] === 'N/A' ? 'N/A' : data['Div_Confidence (%)'] + '%'}</div>
+      <div class="result-item"><strong>Forecasted Dividend:</strong></div>
+      <div class="result-item">${typeof data.Forecasted_Dividend === 'number' ? '$' + data.Forecasted_Dividend.toFixed(2) : 'N/A'}</div>`;
+
+    resultContainer.innerHTML = `
+      <h3>Forecast for ${data.Ticker}</h3>
+      <div class="results-grid">
+        <h4 class="grid-subtitle">Next-Day Price Forecast</h4>
+        <div class="result-item"><strong>Next Trading Day:</strong></div>
+        <div class="result-item">${data.Next_Trading_Day}</div>
+        <div class="result-item"><strong>Price Direction:</strong></div>
+        <div class="result-item ${data.Price_Predicted.toLowerCase()}">${data.Price_Predicted}</div>
+        <div class="result-item"><strong>Price Confidence:</strong></div>
+        <div class="result-item">${data['Price_Confidence (%)']}%</div>
+        <div class="result-item"><strong>Forecasted Close:</strong></div>
+        <div class="result-item">$${data.Forecasted_Close.toFixed(2)}</div>
+
+        <div class="separator"></div>
+        <h4 class="grid-subtitle">Long-Term Price Projection</h4>
+        <div class="result-item"><strong>1 Week (${data.Extended_Forecasts['1_Week'].Date}):</strong></div>
+        <div class="result-item">$${data.Extended_Forecasts['1_Week'].Price.toFixed(2)}</div>
+        <div class="result-item"><strong>1 Month (${data.Extended_Forecasts['1_Month'].Date}):</strong></div>
+        <div class="result-item">$${data.Extended_Forecasts['1_Month'].Price.toFixed(2)}</div>
+        <div class="result-item"><strong>1 Year (${data.Extended_Forecasts['1_Year'].Date}):</strong></div>
+        <div class="result-item">$${data.Extended_Forecasts['1_Year'].Price.toFixed(2)}</div>
+
+        <div class="separator"></div>
+        <h4 class="grid-subtitle">Dividend Forecast</h4>
+        ${dividendSection}
+      </div>
+
+      <div class="charts-wrapper">
+        <div class="chart-box" style="position:relative;">
+          <canvas id="priceChart"></canvas>
+        </div>
+
+        <div style="position:relative;width:100%;margin-top:-8px;margin-bottom:32px;">
+          <div style="display:flex;justify-content:flex-end;margin-bottom:4px;">
+            <button id="navResetBtn" style="
+              padding:3px 10px;font-size:11px;font-weight:600;
+              background:#f1f5f9;color:#374151;border:1px solid #d1d5db;
+              border-radius:4px;cursor:pointer;
+            " title="Reset to full range">↺ Reset</button>
+          </div>
+          <div id="navWrapper" style="
+            position:relative;width:100%;height:72px;
+            background:#f0f2f5;border-radius:6px;
+            border:1px solid #e5e7eb;cursor:ew-resize;user-select:none;overflow:visible;
+          ">
+            <canvas id="navChart" style="width:100%;height:100%;display:block;border-radius:6px;overflow:hidden;"></canvas>
+            <div id="navLeft"  style="position:absolute;top:0;left:0;height:100%;background:rgba(180,190,200,0.45);pointer-events:none;border-radius:6px 0 0 6px;"></div>
+            <div id="navRight" style="position:absolute;top:0;right:0;height:100%;background:rgba(180,190,200,0.45);pointer-events:none;border-radius:0 6px 6px 0;"></div>
+            <div id="navHandleL" style="
+              position:absolute;top:-4px;width:14px;height:calc(100% + 8px);
+              background:rgba(37,99,235,0.75);cursor:ew-resize;
+              border-radius:4px;display:flex;align-items:center;justify-content:center;
+              transition:background 0.15s;box-shadow:0 1px 4px rgba(0,0,0,0.2);
+            ">
+              <div style="display:flex;flex-direction:column;gap:3px;pointer-events:none;">
+                <div style="width:2px;height:10px;background:rgba(255,255,255,0.8);border-radius:1px;"></div>
+                <div style="width:2px;height:10px;background:rgba(255,255,255,0.8);border-radius:1px;"></div>
+                <div style="width:2px;height:10px;background:rgba(255,255,255,0.8);border-radius:1px;"></div>
+              </div>
             </div>
-            <div class="charts-wrapper">
-                <div class="chart-box" style="position:relative;">
-                    <canvas id="priceChart"></canvas>
-                </div>
-                <!-- Navigator: mini overview chart + draggable selection window -->
-                <div style="position:relative;width:100%;margin-top:-8px;margin-bottom:32px;">
-                    <!-- Reset button sits above the navigator bar -->
-                    <div style="display:flex;justify-content:flex-end;margin-bottom:4px;">
-                        <button id="navResetBtn" style="
-                            padding:3px 10px;font-size:11px;font-weight:600;
-                            background:#f1f5f9;color:#374151;border:1px solid #d1d5db;
-                            border-radius:4px;cursor:pointer;
-                        " title="Reset to full range">↺ Reset</button>
-                    </div>
-                    <div id="navWrapper" style="
-                        position:relative;width:100%;height:72px;
-                        background:#f0f2f5;border-radius:6px;
-                        border:1px solid #e5e7eb;cursor:ew-resize;user-select:none;
-                        overflow:visible;
-                    ">
-                        <canvas id="navChart" style="width:100%;height:100%;display:block;border-radius:6px;overflow:hidden;"></canvas>
-                        <!-- Grey overlays for unselected regions -->
-                        <div id="navLeft"  style="position:absolute;top:0;left:0;height:100%;background:rgba(180,190,200,0.45);pointer-events:none;border-radius:6px 0 0 6px;"></div>
-                        <div id="navRight" style="position:absolute;top:0;right:0;height:100%;background:rgba(180,190,200,0.45);pointer-events:none;border-radius:0 6px 6px 0;"></div>
-                        <!-- Handles: wider (14px), taller than the bar, with grip lines -->
-                        <div id="navHandleL" style="
-                            position:absolute;top:-4px;width:14px;height:calc(100% + 8px);
-                            background:rgba(37,99,235,0.75);cursor:ew-resize;
-                            border-radius:4px;display:flex;align-items:center;justify-content:center;
-                            transition:background 0.15s;box-shadow:0 1px 4px rgba(0,0,0,0.2);
-                        ">
-                            <!-- three grip lines -->
-                            <div style="display:flex;flex-direction:column;gap:3px;pointer-events:none;">
-                                <div style="width:2px;height:10px;background:rgba(255,255,255,0.8);border-radius:1px;"></div>
-                                <div style="width:2px;height:10px;background:rgba(255,255,255,0.8);border-radius:1px;"></div>
-                                <div style="width:2px;height:10px;background:rgba(255,255,255,0.8);border-radius:1px;"></div>
-                            </div>
-                        </div>
-                        <div id="navHandleR" style="
-                            position:absolute;top:-4px;width:14px;height:calc(100% + 8px);
-                            background:rgba(37,99,235,0.75);cursor:ew-resize;
-                            border-radius:4px;display:flex;align-items:center;justify-content:center;
-                            transition:background 0.15s;box-shadow:0 1px 4px rgba(0,0,0,0.2);
-                        ">
-                            <div style="display:flex;flex-direction:column;gap:3px;pointer-events:none;">
-                                <div style="width:2px;height:10px;background:rgba(255,255,255,0.8);border-radius:1px;"></div>
-                                <div style="width:2px;height:10px;background:rgba(255,255,255,0.8);border-radius:1px;"></div>
-                                <div style="width:2px;height:10px;background:rgba(255,255,255,0.8);border-radius:1px;"></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="chart-box" id="dividendChartBox" style="position:relative;">
-                    <canvas id="dividendChart"></canvas>
-                    <div id="noDividendOverlay" style="
-                        display:none;position:absolute;inset:0;
-                        background:#f3f4f6;border-radius:10px;
-                        overflow:hidden;
-                    ">
-                        <div style="
-                            width:100%;height:100%;display:flex;
-                            align-items:center;justify-content:center;
-                        ">
-                            <p style="
-                                margin:0;font-size:22px;font-weight:700;
-                                color:rgba(107,114,128,0.45);text-align:center;
-                                transform:rotate(-15deg);line-height:1.4;
-                                user-select:none;pointer-events:none;
-                                font-family:Inter, sans-serif;
-                            ">This company does not pay<br>dividends to its stakeholders.</p>
-                        </div>
-                    </div>
-                </div>
+            <div id="navHandleR" style="
+              position:absolute;top:-4px;width:14px;height:calc(100% + 8px);
+              background:rgba(37,99,235,0.75);cursor:ew-resize;
+              border-radius:4px;display:flex;align-items:center;justify-content:center;
+              transition:background 0.15s;box-shadow:0 1px 4px rgba(0,0,0,0.2);
+            ">
+              <div style="display:flex;flex-direction:column;gap:3px;pointer-events:none;">
+                <div style="width:2px;height:10px;background:rgba(255,255,255,0.8);border-radius:1px;"></div>
+                <div style="width:2px;height:10px;background:rgba(255,255,255,0.8);border-radius:1px;"></div>
+                <div style="width:2px;height:10px;background:rgba(255,255,255,0.8);border-radius:1px;"></div>
+              </div>
             </div>
-        `;
-    resultContainer.innerHTML = html;
+          </div>
+        </div>
+
+        <div class="chart-box" id="dividendChartBox" style="position:relative;">
+          <canvas id="dividendChart"></canvas>
+          <div id="noDividendOverlay" style="
+            display:none;position:absolute;inset:0;
+            background:#f3f4f6;border-radius:10px;overflow:hidden;
+          ">
+            <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;">
+              <span style="
+                font-size:42px;font-weight:800;color:rgba(156,163,175,0.2);
+                letter-spacing:3px;white-space:nowrap;transform:rotate(-25deg);
+                font-family:Inter,sans-serif;user-select:none;
+              ">NO DIVIDEND DATA</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
     if (data.Chart_History) setTimeout(() => renderCharts(data), 150);
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // renderCharts — main chart + navigator + dividend chart
-  // ─────────────────────────────────────────────────────────────────────────
   function renderCharts(data) {
     const histData = data.Chart_History;
 
@@ -170,19 +158,20 @@ document.addEventListener('DOMContentLoaded', () => {
     if (navChartInstance) navChartInstance.destroy();
     if (dividendChartInstance) dividendChartInstance.destroy();
 
-    // ── Build coordinate arrays ───────────────────────────────────────────
-
+    // Actual closing prices shown as black scatter dots
     const historyCoords = histData.dates.map((d, i) => ({
       x: d,
       y: histData.prices[i],
     }));
+
+    // Last historical point — both charts anchor their forecast line here
     const anchorDate = histData.dates[histData.dates.length - 1];
     const anchorPrice = histData.prices[histData.prices.length - 1];
-    const histStartDate = histData.dates[0];
 
+    // RF fitted values trimmed to the visible history window, joined to the forecast
     const trainFitCoords = (data.Train_Fit_Dates || [])
       .map((d, i) => ({ x: d, y: data.Train_Fit_Prices[i] }))
-      .filter((pt) => pt.x >= histStartDate);
+      .filter((pt) => pt.x >= histData.dates[0]);
 
     const unifiedLineCoords = [
       ...trainFitCoords,
@@ -193,6 +182,7 @@ document.addEventListener('DOMContentLoaded', () => {
       })),
     ];
 
+    // 95% confidence band — upper fills down to lower via fill: '+1'
     const upperCoords = [
       { x: anchorDate, y: anchorPrice },
       ...data.Chart_Future_Dates.map((d, i) => ({
@@ -208,17 +198,13 @@ document.addEventListener('DOMContentLoaded', () => {
       })),
     ];
 
-    // All dates across the full range (history + forecast), used for navigator
     const allDates = [...histData.dates, ...data.Chart_Future_Dates];
     const minTs = new Date(allDates[0]).getTime();
     const maxTs = new Date(allDates[allDates.length - 1]).getTime();
-
-    // Initial view: show from histStartDate to end of forecast
     let viewMin = minTs;
     let viewMax = maxTs;
 
-    // ── Main Price Chart ──────────────────────────────────────────────────
-
+    // Main price chart
     const ctxPrice = document.getElementById('priceChart').getContext('2d');
     priceChartInstance = new Chart(ctxPrice, {
       type: 'line',
@@ -311,6 +297,7 @@ document.addEventListener('DOMContentLoaded', () => {
               const chart = legend.chart;
               const meta = chart.getDatasetMeta(legendItem.datasetIndex);
               meta.hidden = !meta.hidden;
+              // Toggling the forecast line also hides/shows the confidence band
               if (legendItem.text === 'Prediction Forecast') {
                 chart.data.datasets.forEach((ds, i) => {
                   if (ds.label === 'Upper Bound' || ds.label === 'Lower Bound')
@@ -343,6 +330,7 @@ document.addEventListener('DOMContentLoaded', () => {
             callbacks: {
               label: (ctx) => {
                 if (ctx.dataset.label.includes('Bound')) return null;
+                // Suppress historical label for dates at or after the forecast start
                 if (
                   ctx.dataset.label === 'Historical' &&
                   new Date(ctx.parsed.x) >= new Date(anchorDate)
@@ -360,8 +348,7 @@ document.addEventListener('DOMContentLoaded', () => {
       },
     });
 
-    // ── Navigator (mini overview) chart ───────────────────────────────────
-
+    // Navigator: a stripped-down mini chart showing the full date range
     const ctxNav = document.getElementById('navChart').getContext('2d');
     navChartInstance = new Chart(ctxNav, {
       type: 'line',
@@ -408,42 +395,39 @@ document.addEventListener('DOMContentLoaded', () => {
       },
     });
 
-    // ── Navigator drag logic ──────────────────────────────────────────────
-    // The selection window is defined by [viewMin, viewMax] in ms timestamps.
-    // Dragging the window pans; dragging the handles resizes it.
-
+    // Navigator drag state
     const navWrapper = document.getElementById('navWrapper');
     const navLeft = document.getElementById('navLeft');
     const navRight = document.getElementById('navRight');
     const handleL = document.getElementById('navHandleL');
     const handleR = document.getElementById('navHandleR');
 
+    const MIN_WINDOW = 7 * 24 * 3600 * 1000; // minimum selectable window: 7 days
+    let dragMode = null; // 'pan' | 'left' | 'right'
+    let dragStartX = 0;
+    let dragStartMin = 0;
+    let dragStartMax = 0;
+
     function tsToFrac(ts) {
       return (ts - minTs) / (maxTs - minTs);
-    }
-    function fracToTs(frac) {
-      return minTs + frac * (maxTs - minTs);
     }
 
     function updateOverlays() {
       const W = navWrapper.getBoundingClientRect().width;
       const leftPx = tsToFrac(viewMin) * W;
       const rightPx = tsToFrac(viewMax) * W;
-      const winPx = rightPx - leftPx;
-
       navLeft.style.width = `${leftPx}px`;
       navRight.style.width = `${W - rightPx}px`;
-      handleL.style.left = `${leftPx - 7}px`; // centre 14px handle on edge
+      handleL.style.left = `${leftPx - 7}px`; // offset centres the 14px handle on the edge
       handleR.style.left = `${rightPx - 7}px`;
     }
 
     function applyViewToMainChart() {
       priceChartInstance.options.scales.x.min = viewMin;
       priceChartInstance.options.scales.x.max = viewMax;
-      priceChartInstance.update('none');
+      priceChartInstance.update('none'); // skip animation for instant response
     }
 
-    // Hover feedback: brighten handle on hover
     [handleL, handleR].forEach((h) => {
       h.addEventListener('mouseenter', () => {
         h.style.background = 'rgba(37,99,235,1)';
@@ -457,7 +441,6 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     });
 
-    // Reset button — restores full range
     document.getElementById('navResetBtn').addEventListener('click', () => {
       viewMin = minTs;
       viewMax = maxTs;
@@ -465,20 +448,11 @@ document.addEventListener('DOMContentLoaded', () => {
       applyViewToMainChart();
     });
 
-    // Minimum window: 7 days in ms
-    const MIN_WINDOW = 7 * 24 * 3600 * 1000;
-
-    let dragMode = null; // 'pan' | 'left' | 'right'
-    let dragStartX = 0;
-    let dragStartMin = 0;
-    let dragStartMax = 0;
-
     function onDragStart(e, mode) {
       dragMode = mode;
       dragStartX = e.clientX ?? e.touches[0].clientX;
       dragStartMin = viewMin;
       dragStartMax = viewMax;
-      // Active state: fully opaque while dragging
       if (mode === 'left') {
         handleL.style.background = 'rgba(29,78,216,1)';
         handleL.style.cursor = 'grabbing';
@@ -494,12 +468,9 @@ document.addEventListener('DOMContentLoaded', () => {
     handleL.addEventListener('mousedown', (e) => onDragStart(e, 'left'));
     handleR.addEventListener('mousedown', (e) => onDragStart(e, 'right'));
     navWrapper.addEventListener('mousedown', (e) => {
-      // Only start pan if not clicking a handle
       if (e.target === handleL || e.target === handleR) return;
       onDragStart(e, 'pan');
     });
-
-    // Touch equivalents
     handleL.addEventListener('touchstart', (e) => onDragStart(e, 'left'), {
       passive: false,
     });
@@ -519,14 +490,12 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!dragMode) return;
       const clientX = e.clientX ?? e.touches[0].clientX;
       const W = navWrapper.getBoundingClientRect().width;
-      const dxFrac = (clientX - dragStartX) / W;
-      const dxTs = dxFrac * (maxTs - minTs);
+      const dxTs = ((clientX - dragStartX) / W) * (maxTs - minTs);
       const span = dragStartMax - dragStartMin;
 
       if (dragMode === 'pan') {
         let newMin = dragStartMin + dxTs;
         let newMax = dragStartMax + dxTs;
-        // Clamp to full range
         if (newMin < minTs) {
           newMin = minTs;
           newMax = minTs + span;
@@ -538,11 +507,15 @@ document.addEventListener('DOMContentLoaded', () => {
         viewMin = newMin;
         viewMax = newMax;
       } else if (dragMode === 'left') {
-        viewMin = Math.min(dragStartMin + dxTs, viewMax - MIN_WINDOW);
-        viewMin = Math.max(viewMin, minTs);
+        viewMin = Math.max(
+          Math.min(dragStartMin + dxTs, viewMax - MIN_WINDOW),
+          minTs,
+        );
       } else if (dragMode === 'right') {
-        viewMax = Math.max(dragStartMax + dxTs, viewMin + MIN_WINDOW);
-        viewMax = Math.min(viewMax, maxTs);
+        viewMax = Math.min(
+          Math.max(dragStartMax + dxTs, viewMin + MIN_WINDOW),
+          maxTs,
+        );
       }
 
       updateOverlays();
@@ -551,7 +524,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function onDragEnd() {
-      // Restore handle appearance
       handleL.style.background = 'rgba(37,99,235,0.75)';
       handleL.style.cursor = 'ew-resize';
       handleR.style.background = 'rgba(37,99,235,0.75)';
@@ -565,22 +537,19 @@ document.addEventListener('DOMContentLoaded', () => {
     document.addEventListener('touchmove', onDragMove, { passive: false });
     document.addEventListener('touchend', onDragEnd);
 
-    // Initialise overlays after chart renders so getBoundingClientRect is valid
     setTimeout(updateOverlays, 200);
 
-    // ── Dividend Chart ────────────────────────────────────────────────────
-
+    // Dividend chart
     const noDividend =
       data.Next_Dividend_Date === 'N/A' || !histData.dividend_dates.length;
 
     if (noDividend) {
-      // Hide the canvas, show the greyed-out overlay instead
       document.getElementById('dividendChart').style.display = 'none';
       document.getElementById('noDividendOverlay').style.display = 'block';
     } else {
       const divLabels = [...histData.dividend_dates];
       const divAmounts = [...histData.dividend_amounts];
-      const bgColors = Array(divAmounts.length).fill('#16a34a');
+      const bgColors = Array(divAmounts.length).fill('#111827');
 
       if (
         typeof data.Forecasted_Dividend === 'number' &&
@@ -588,7 +557,7 @@ document.addEventListener('DOMContentLoaded', () => {
       ) {
         divLabels.push(data.Next_Dividend_Date + ' (Est)');
         divAmounts.push(data.Forecasted_Dividend);
-        bgColors.push('#93c5fd');
+        bgColors.push('#93c5fd'); // light blue distinguishes the estimated bar
       }
 
       const ctxDiv = document.getElementById('dividendChart').getContext('2d');
@@ -629,7 +598,28 @@ document.addEventListener('DOMContentLoaded', () => {
               font: { size: 14, weight: '600' },
               padding: { bottom: 16 },
             },
-            legend: { display: false },
+            legend: {
+              display: true,
+              labels: {
+                usePointStyle: true,
+                generateLabels: () => {
+                  const items = [{
+                    text: 'Historical Payout',
+                    fillStyle: '#111827',
+                    strokeStyle: 'transparent'
+                  }];
+                  // Only show the projected legend item if forecast data exists
+                  if (typeof data.Forecasted_Dividend === 'number' && data.Next_Dividend_Date !== 'N/A') {
+                    items.push({
+                      text: 'Projected Payout',
+                      fillStyle: '#93c5fd',
+                      strokeStyle: 'transparent'
+                    });
+                  }
+                  return items;
+                }
+              }
+            },
             tooltip: {
               callbacks: {
                 label: (ctx) => `Dividend: $${ctx.parsed.y.toFixed(4)}`,
