@@ -1,3 +1,18 @@
-/stock-market-predictor-env
-/__pycache__
+# project specific files and directories to ignore
+stock-market-predictor-env/
+__pycache__/
+*.pyc
 .DS_Store
+.env
+
+# Local Terraform variables
+/infra/terraform.tfvars
+
+# Terraform state and directories
+.terraform/
+*.tfstate
+*.tfstate.backup
+
+# Security keys (fallback protection)
+*.pem
+*.key
