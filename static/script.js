@@ -1,16 +1,19 @@
 Chart.register(Chart.Filler);
 
 document.addEventListener('DOMContentLoaded', () => {
+  // DOM Elements
   const predictBtn = document.getElementById('predictBtn');
   const tickerInput = document.getElementById('tickerInput');
   const resultContainer = document.getElementById('resultContainer');
   const errorContainer = document.getElementById('errorContainer');
   const loader = document.getElementById('loader');
 
+  // Chart instances
   let priceChartInstance = null;
   let navChartInstance = null;
   let dividendChartInstance = null;
 
+  // --- API Interaction ---
   const handlePrediction = async () => {
     const ticker = tickerInput.value.trim().toUpperCase();
     if (!ticker) {
@@ -19,11 +22,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     clearMessages();
     loader.style.display = 'block';
+    
     try {
       const response = await fetch(`/predict/${ticker}`);
       const data = await response.json();
-      if (!response.ok)
-        throw new Error(data.error || 'An unknown error occurred.');
+      if (!response.ok) throw new Error(data.error || 'An unknown error occurred.');
       displayResult(data);
     } catch (error) {
       showError(error.message);
@@ -37,15 +40,29 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.key === 'Enter') handlePrediction();
   });
 
+  // --- HTML UI Rendering ---
   function displayResult(data) {
-    // Dividend section: show a plain message for non-dividend-paying stocks
-    const dividendSection =
-      data.Next_Dividend_Date === 'N/A'
-        ? `
+    const hasDividends = data.Next_Dividend_Date !== 'N/A';
+    const divExt = data.Div_Extended_Forecasts || {};
+
+    const divLongTermRows = hasDividends && Object.keys(divExt).length
+      ? `
+      <div class="separator"></div>
+      <h4 class="grid-subtitle">Long-Term Dividend Projection</h4>
+      <div class="result-item"><strong>2nd Payout (${divExt['2_Payouts']?.Date ?? 'N/A'}):</strong></div>
+      <div class="result-item">${divExt['2_Payouts'] ? '$' + divExt['2_Payouts'].Amount.toFixed(2) : 'N/A'}</div>
+      <div class="result-item"><strong>3rd Payout (${divExt['3_Payouts']?.Date ?? 'N/A'}):</strong></div>
+      <div class="result-item">${divExt['3_Payouts'] ? '$' + divExt['3_Payouts'].Amount.toFixed(2) : 'N/A'}</div>
+      <div class="result-item"><strong>4th Payout (${divExt['4_Payouts']?.Date ?? 'N/A'}):</strong></div>
+      <div class="result-item">${divExt['4_Payouts'] ? '$' + divExt['4_Payouts'].Amount.toFixed(2) : 'N/A'}</div>`
+      : '';
+
+    const dividendSection = !hasDividends
+      ? `
       <div class="result-item" style="grid-column:1/-1;color:#6b7280;font-style:italic;font-size:14px;padding:6px 0;">
         This company does not pay dividends to its stakeholders.
       </div>`
-        : `
+      : `
       <div class="result-item"><strong>Next Dividend Date:</strong></div>
       <div class="result-item">${data.Next_Dividend_Date}</div>
       <div class="result-item"><strong>Dividend Direction:</strong></div>
@@ -53,7 +70,8 @@ document.addEventListener('DOMContentLoaded', () => {
       <div class="result-item"><strong>Dividend Confidence:</strong></div>
       <div class="result-item">${data['Div_Confidence (%)'] === 'N/A' ? 'N/A' : data['Div_Confidence (%)'] + '%'}</div>
       <div class="result-item"><strong>Forecasted Dividend:</strong></div>
-      <div class="result-item">${typeof data.Forecasted_Dividend === 'number' ? '$' + data.Forecasted_Dividend.toFixed(2) : 'N/A'}</div>`;
+      <div class="result-item">${typeof data.Forecasted_Dividend === 'number' ? '$' + data.Forecasted_Dividend.toFixed(2) : 'N/A'}</div>
+      ${divLongTermRows}`;
 
     resultContainer.innerHTML = `
       <h3>Forecast for ${data.Ticker}</h3>
@@ -151,47 +169,53 @@ document.addEventListener('DOMContentLoaded', () => {
     if (data.Chart_History) setTimeout(() => renderCharts(data), 150);
   }
 
+  // --- Chart.js Rendering & Logic ---
   function renderCharts(data) {
     const histData = data.Chart_History;
 
+    // Clean up existing instances before drawing new ones
     if (priceChartInstance) priceChartInstance.destroy();
     if (navChartInstance) navChartInstance.destroy();
     if (dividendChartInstance) dividendChartInstance.destroy();
 
-    // Actual closing prices shown as black scatter dots
+    // 1. Prepare Data Coordinates
     const historyCoords = histData.dates.map((d, i) => ({
       x: d,
       y: histData.prices[i],
     }));
 
-    // Last historical point — both charts anchor their forecast line here
     const anchorDate = histData.dates[histData.dates.length - 1];
     const anchorPrice = histData.prices[histData.prices.length - 1];
 
-    // RF fitted values trimmed to the visible history window, joined to the forecast
+    // Extract the model's in-sample prediction for the current "Today" point
+    const projectedToday = data.Train_Fit_Prices && data.Train_Fit_Prices.length > 0 
+      ? data.Train_Fit_Prices[data.Train_Fit_Prices.length - 1] 
+      : anchorPrice;
+
     const trainFitCoords = (data.Train_Fit_Dates || [])
       .map((d, i) => ({ x: d, y: data.Train_Fit_Prices[i] }))
       .filter((pt) => pt.x >= histData.dates[0]);
 
+    // Unify the historical predictions with the future forecasts via the true projected anchor
     const unifiedLineCoords = [
       ...trainFitCoords,
-      { x: anchorDate, y: anchorPrice },
+      { x: anchorDate, y: projectedToday },
       ...data.Chart_Future_Dates.map((d, i) => ({
         x: d,
         y: data.Chart_Future_Prices[i],
       })),
     ];
 
-    // 95% confidence band — upper fills down to lower via fill: '+1'
     const upperCoords = [
-      { x: anchorDate, y: anchorPrice },
+      { x: anchorDate, y: projectedToday }, 
       ...data.Chart_Future_Dates.map((d, i) => ({
         x: d,
         y: data.Chart_Future_Upper[i],
       })),
     ];
+    
     const lowerCoords = [
-      { x: anchorDate, y: anchorPrice },
+      { x: anchorDate, y: projectedToday }, 
       ...data.Chart_Future_Dates.map((d, i) => ({
         x: d,
         y: data.Chart_Future_Lower[i],
@@ -204,14 +228,14 @@ document.addEventListener('DOMContentLoaded', () => {
     let viewMin = minTs;
     let viewMax = maxTs;
 
-    // Main price chart
+    // 2. Initialize Main Price Chart
     const ctxPrice = document.getElementById('priceChart').getContext('2d');
     priceChartInstance = new Chart(ctxPrice, {
       type: 'line',
       data: {
         datasets: [
           {
-            label: 'Historical',
+            label: 'Historical Stock Prices',
             data: historyCoords,
             borderColor: 'rgba(0,0,0,0)',
             backgroundColor: '#111827',
@@ -221,7 +245,7 @@ document.addEventListener('DOMContentLoaded', () => {
             order: 1,
           },
           {
-            label: 'Prediction Forecast',
+            label: 'Projected Stock Prices',
             data: unifiedLineCoords,
             borderColor: '#2563eb',
             backgroundColor: 'rgba(37,99,235,0.4)',
@@ -238,6 +262,8 @@ document.addEventListener('DOMContentLoaded', () => {
             borderColor: 'transparent',
             backgroundColor: 'rgba(37,99,235,0.15)',
             pointRadius: 0,
+            pointHoverRadius: 0, 
+            hitRadius: 0,        
             fill: '+1',
             tension: 0.3,
             order: 2,
@@ -248,6 +274,8 @@ document.addEventListener('DOMContentLoaded', () => {
             borderColor: 'transparent',
             backgroundColor: 'transparent',
             pointRadius: 0,
+            pointHoverRadius: 0, 
+            hitRadius: 0,        
             fill: false,
             tension: 0.3,
             order: 2,
@@ -258,7 +286,7 @@ document.addEventListener('DOMContentLoaded', () => {
         responsive: true,
         maintainAspectRatio: false,
         animation: false,
-        interaction: { intersect: false, mode: 'nearest' },
+        interaction: { intersect: false, mode: 'x' }, 
         scales: {
           x: {
             type: 'time',
@@ -284,7 +312,7 @@ document.addEventListener('DOMContentLoaded', () => {
         plugins: {
           title: {
             display: true,
-            text: 'Price Forecast with 95% Confidence Interval',
+            text: 'Stock Price History & Forecast with 95% Confidence Interval',
             font: { size: 13, weight: '600' },
             padding: { bottom: 16 },
           },
@@ -297,8 +325,7 @@ document.addEventListener('DOMContentLoaded', () => {
               const chart = legend.chart;
               const meta = chart.getDatasetMeta(legendItem.datasetIndex);
               meta.hidden = !meta.hidden;
-              // Toggling the forecast line also hides/shows the confidence band
-              if (legendItem.text === 'Prediction Forecast') {
+              if (legendItem.text === 'Projected Stock Prices') {
                 chart.data.datasets.forEach((ds, i) => {
                   if (ds.label === 'Upper Bound' || ds.label === 'Lower Bound')
                     chart.getDatasetMeta(i).hidden = meta.hidden;
@@ -327,20 +354,30 @@ document.addEventListener('DOMContentLoaded', () => {
             },
           },
           tooltip: {
+            filter: function(tooltipItem, currentIndex, tooltipItems) {
+              const label = tooltipItem.dataset.label;
+              const pointDate = tooltipItem.raw.x;
+              const hoverDate = tooltipItems[0].raw.x;
+
+              // 1. Hide the confidence bounds completely
+              if (label.includes('Bound')) return false;
+              
+              // 2. TIME-TRAVEL FIX: Ensure every point strictly matches the hovered Date
+              if (pointDate !== hoverDate) return false;
+
+              // 3. DUPLICATE FIX: Prevent multiple points from the exact same dataset showing
+              for (let i = 0; i < currentIndex; i++) {
+                if (tooltipItems[i].datasetIndex === tooltipItem.datasetIndex) return false;
+              }
+
+              // 4. CLEANUP: Suppress the blue Projected line exactly on "Today" so only the Historical point shows
+              if (label === 'Projected Stock Prices' && pointDate === anchorDate) return false;
+
+              return true;
+            },
             callbacks: {
               label: (ctx) => {
-                if (ctx.dataset.label.includes('Bound')) return null;
-                // Suppress historical label for dates at or after the forecast start
-                if (
-                  ctx.dataset.label === 'Historical' &&
-                  new Date(ctx.parsed.x) >= new Date(anchorDate)
-                )
-                  return null;
-                const lbl =
-                  ctx.dataset.label === 'Prediction Forecast'
-                    ? 'Forecast'
-                    : ctx.dataset.label;
-                return `${lbl}: $${ctx.parsed.y.toFixed(2)}`;
+                return `${ctx.dataset.label}: $${ctx.parsed.y.toFixed(2)}`;
               },
             },
           },
@@ -348,7 +385,7 @@ document.addEventListener('DOMContentLoaded', () => {
       },
     });
 
-    // Navigator: a stripped-down mini chart showing the full date range
+    // 3. Initialize Navigator Chart (Mini Timeline)
     const ctxNav = document.getElementById('navChart').getContext('2d');
     navChartInstance = new Chart(ctxNav, {
       type: 'line',
@@ -395,15 +432,15 @@ document.addEventListener('DOMContentLoaded', () => {
       },
     });
 
-    // Navigator drag state
+    // 4. Setup Custom Drag and Zoom Functionality for Navigator
     const navWrapper = document.getElementById('navWrapper');
     const navLeft = document.getElementById('navLeft');
     const navRight = document.getElementById('navRight');
     const handleL = document.getElementById('navHandleL');
     const handleR = document.getElementById('navHandleR');
 
-    const MIN_WINDOW = 7 * 24 * 3600 * 1000; // minimum selectable window: 7 days
-    let dragMode = null; // 'pan' | 'left' | 'right'
+    const MIN_WINDOW = 7 * 24 * 3600 * 1000; 
+    let dragMode = null; 
     let dragStartX = 0;
     let dragStartMin = 0;
     let dragStartMax = 0;
@@ -418,14 +455,14 @@ document.addEventListener('DOMContentLoaded', () => {
       const rightPx = tsToFrac(viewMax) * W;
       navLeft.style.width = `${leftPx}px`;
       navRight.style.width = `${W - rightPx}px`;
-      handleL.style.left = `${leftPx - 7}px`; // offset centres the 14px handle on the edge
+      handleL.style.left = `${leftPx - 7}px`; 
       handleR.style.left = `${rightPx - 7}px`;
     }
 
     function applyViewToMainChart() {
       priceChartInstance.options.scales.x.min = viewMin;
       priceChartInstance.options.scales.x.max = viewMax;
-      priceChartInstance.update('none'); // skip animation for instant response
+      priceChartInstance.update('none'); 
     }
 
     [handleL, handleR].forEach((h) => {
@@ -471,19 +508,13 @@ document.addEventListener('DOMContentLoaded', () => {
       if (e.target === handleL || e.target === handleR) return;
       onDragStart(e, 'pan');
     });
-    handleL.addEventListener('touchstart', (e) => onDragStart(e, 'left'), {
-      passive: false,
-    });
-    handleR.addEventListener('touchstart', (e) => onDragStart(e, 'right'), {
-      passive: false,
-    });
-    navWrapper.addEventListener(
-      'touchstart',
-      (e) => {
+    handleL.addEventListener('touchstart', (e) => onDragStart(e, 'left'), { passive: false });
+    handleR.addEventListener('touchstart', (e) => onDragStart(e, 'right'), { passive: false });
+    navWrapper.addEventListener('touchstart', (e) => {
         if (e.target === handleL || e.target === handleR) return;
         onDragStart(e, 'pan');
       },
-      { passive: false },
+      { passive: false }
     );
 
     function onDragMove(e) {
@@ -507,15 +538,9 @@ document.addEventListener('DOMContentLoaded', () => {
         viewMin = newMin;
         viewMax = newMax;
       } else if (dragMode === 'left') {
-        viewMin = Math.max(
-          Math.min(dragStartMin + dxTs, viewMax - MIN_WINDOW),
-          minTs,
-        );
+        viewMin = Math.max(Math.min(dragStartMin + dxTs, viewMax - MIN_WINDOW), minTs);
       } else if (dragMode === 'right') {
-        viewMax = Math.min(
-          Math.max(dragStartMax + dxTs, viewMin + MIN_WINDOW),
-          maxTs,
-        );
+        viewMax = Math.min(Math.max(dragStartMax + dxTs, viewMin + MIN_WINDOW), maxTs);
       }
 
       updateOverlays();
@@ -539,26 +564,34 @@ document.addEventListener('DOMContentLoaded', () => {
 
     setTimeout(updateOverlays, 200);
 
-    // Dividend chart
-    const noDividend =
-      data.Next_Dividend_Date === 'N/A' || !histData.dividend_dates.length;
+    // 5. Initialize Dividend Chart
+    const noDividend = data.Next_Dividend_Date === 'N/A' || !histData.dividend_dates.length;
 
     if (noDividend) {
       document.getElementById('dividendChart').style.display = 'none';
       document.getElementById('noDividendOverlay').style.display = 'block';
     } else {
-      const divLabels = [...histData.dividend_dates];
+      const divLabels  = [...histData.dividend_dates];
       const divAmounts = [...histData.dividend_amounts];
-      const bgColors = Array(divAmounts.length).fill('#111827');
+      const bgColors   = Array(divAmounts.length).fill('#111827');
 
-      if (
-        typeof data.Forecasted_Dividend === 'number' &&
-        data.Next_Dividend_Date !== 'N/A'
-      ) {
-        divLabels.push(data.Next_Dividend_Date + ' (Est)');
-        divAmounts.push(data.Forecasted_Dividend);
-        bgColors.push('#93c5fd'); // light blue distinguishes the estimated bar
-      }
+      const futureDates   = data.Div_Future_Dates   || [];
+      const futureAmounts = data.Div_Future_Amounts  || [];
+      const futureUpper   = data.Div_Future_Upper    || [];
+      const futureLower   = data.Div_Future_Lower    || [];
+
+      // Pad historical data so the confidence indices line up with the labels array
+      const ciUpper = [...Array(divAmounts.length).fill(null)];
+      const ciLower = [...Array(divAmounts.length).fill(null)];
+
+      futureDates.forEach((d, i) => {
+        const label = i === 0 ? d + ' (Est.)' : d + ` (Est. +${i + 1})`;
+        divLabels.push(label);
+        divAmounts.push(futureAmounts[i]);
+        bgColors.push('#93c5fd');
+        ciUpper.push(futureUpper[i]);
+        ciLower.push(futureLower[i]);
+      });
 
       const ctxDiv = document.getElementById('dividendChart').getContext('2d');
       dividendChartInstance = new Chart(ctxDiv, {
@@ -594,7 +627,7 @@ document.addEventListener('DOMContentLoaded', () => {
           plugins: {
             title: {
               display: true,
-              text: 'Dividend History & Next Projected Payout',
+              text: 'Dividend History & Forecast with 95% Confidence Interval',
               font: { size: 14, weight: '600' },
               padding: { bottom: 16 },
             },
@@ -603,26 +636,27 @@ document.addEventListener('DOMContentLoaded', () => {
               labels: {
                 usePointStyle: true,
                 generateLabels: () => {
-                  const items = [{
-                    text: 'Historical Payout',
-                    fillStyle: '#111827',
-                    strokeStyle: 'transparent'
-                  }];
-                  // Only show the projected legend item if forecast data exists
-                  if (typeof data.Forecasted_Dividend === 'number' && data.Next_Dividend_Date !== 'N/A') {
-                    items.push({
-                      text: 'Projected Payout',
-                      fillStyle: '#93c5fd',
-                      strokeStyle: 'transparent'
-                    });
+                  const items = [{ text: 'Historical Dividend Payout', fillStyle: '#111827', strokeStyle: 'transparent' }];
+                  if (futureDates.length) {
+                    items.push({ text: 'Projected Dividend Payout', fillStyle: '#93c5fd', strokeStyle: 'transparent' });
                   }
                   return items;
-                }
-              }
+                },
+              },
             },
             tooltip: {
               callbacks: {
-                label: (ctx) => `Dividend: $${ctx.parsed.y.toFixed(4)}`,
+                label: (ctx) => {
+                  const amount = ctx.parsed.y;
+                  const i = ctx.dataIndex;
+                  if (ciUpper[i] !== null) {
+                    return [
+                      `Projected Dividend Payout: $${amount.toFixed(2)}`,
+                      `95% CI: $${ciLower[i].toFixed(2)} – $${ciUpper[i].toFixed(2)}`,
+                    ];
+                  }
+                  return `Historical Dividend Payout: $${amount.toFixed(2)}`;
+                },
               },
             },
           },
@@ -631,9 +665,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // --- Helper Functions ---
   function showError(message) {
     errorContainer.textContent = `Error: ${message}`;
   }
+  
   function clearMessages() {
     resultContainer.innerHTML = '';
     errorContainer.textContent = '';
