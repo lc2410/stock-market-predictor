@@ -1,6 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
-/* Global Layout */
+/* Core Layout */
 body {
     font-family: 'Inter', sans-serif;
     background-color: #f0f2f5;
@@ -24,7 +24,6 @@ body {
     text-align: center;
 }
 
-/* Headings */
 h1 {
     font-size: 28px;
     font-weight: 700;
@@ -37,7 +36,7 @@ p {
     margin-bottom: 30px;
 }
 
-/* Input Section */
+/* Search Bar & Inputs */
 .input-group {
     display: flex;
     gap: 10px;
@@ -52,7 +51,7 @@ p {
 
 #tickerInput {
     width: 100%;
-    padding: 12px 35px 12px 15px; /* Added 35px right padding to make room for the X */
+    padding: 12px 35px 12px 15px; 
     border: 1px solid #ccd0d5;
     border-radius: 8px;
     font-size: 16px;
@@ -79,7 +78,7 @@ p {
     font-size: 20px;
     color: #999;
     cursor: pointer;
-    display: none; /* Hidden by default */
+    display: none;
     line-height: 1;
     user-select: none;
 }
@@ -111,7 +110,7 @@ p {
     box-shadow: none;
 }
 
-/* Loader */
+/* Loading Spinner */
 .loader {
     border: 4px solid #f3f3f3;
     border-top: 4px solid #1877f2;
@@ -127,7 +126,7 @@ p {
     100% { transform: rotate(360deg); }
 }
 
-/* Results */
+/* Results Formatting */
 .error-message {
     color: #fa383e;
     font-weight: 500;
@@ -172,7 +171,6 @@ p {
     margin: 8px 0;
 }
 
-/* Section headings (Price Forecast / Dividend Forecast) */
 .section-heading {
     font-size: 22px;
     font-weight: 700;
@@ -184,7 +182,7 @@ p {
     border-bottom: 2px solid #1877f2;
 }
 
-/* Charts */
+/* Chart Canvases */
 .charts-wrapper {
     margin-top: 40px;
     display: flex;
@@ -195,7 +193,7 @@ p {
 .chart-box {
     position: relative;
     width: 100%;
-    height: 380px;   /* fixed pixel height so Chart.js can measure the canvas */
+    height: 380px; 
     background: #fafafa;
     border: 1px solid #e5e7eb;
     border-radius: 10px;
@@ -209,7 +207,7 @@ canvas {
     height: 100% !important;
 }
 
-/* --- Smart Search Autocomplete --- */
+/* Autocomplete Dropdown */
 .autocomplete-items {
     position: absolute;
     top: 100%;
@@ -224,7 +222,6 @@ canvas {
     box-shadow: 0 4px 12px rgba(0,0,0,0.15);
 }
 
-/* Add this to hide the box and its border when there are no results */
 .autocomplete-items:empty {
     display: none;
 }
@@ -244,7 +241,7 @@ canvas {
 .ac-sym { font-weight: 700; color: #1877f2; }
 .ac-name { color: #606770; font-size: 13px; text-align: right; }
 
-/* --- Historical Data Table --- */
+/* Historical Data Table */
 .table-wrapper {
     margin-top: 16px;
     overflow-x: auto;

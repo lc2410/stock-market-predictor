@@ -11,10 +11,7 @@ import logging
 
 logging.getLogger('yfinance').setLevel(logging.ERROR)
 
-# ---------------------------------------------------------------------------
-# Trading day utilities
-# ---------------------------------------------------------------------------
-
+# Market date utilities
 def _get_us_bday():
     return CustomBusinessDay(calendar=USFederalHolidayCalendar())
 
@@ -23,10 +20,6 @@ def get_next_trading_day():
 
 def get_future_trading_date(days_ahead):
     return (pd.to_datetime(date.today()) + _get_us_bday() * days_ahead).strftime('%Y-%m-%d')
-
-# ---------------------------------------------------------------------------
-# Chart history (called by app.py)
-# ---------------------------------------------------------------------------
 
 def get_chart_data(ticker_symbol, predicted_price=None):
     try:
@@ -50,13 +43,8 @@ def get_chart_data(ticker_symbol, predicted_price=None):
         print(f"Error fetching chart data: {e}")
         return None
 
-# ---------------------------------------------------------------------------
-# Step 1 — Fetch and validate raw historical data
-# ---------------------------------------------------------------------------
-
 def _fetch_data(ticker):
-    """Download max history from yfinance, slice from 2010, and enforce a
-    minimum row count so downstream models have enough training data."""
+    """Grab max available history and enforce a minimum row count for training."""
     stock_ticker = yf.Ticker(ticker)
     data = stock_ticker.history(period="max")
 
@@ -72,13 +60,7 @@ def _fetch_data(ticker):
 
     return data
 
-# ---------------------------------------------------------------------------
-# Step 2 — Engineer price features
-# ---------------------------------------------------------------------------
-
 def _engineer_features(data):
-    """Build all technical indicators and return the enriched DataFrame
-    alongside the initial list of candidate feature column names."""
     price_data = data[["Close", "Volume", "High", "Low"]].copy()
     price_data["Tomorrow"] = price_data["Close"].shift(-1)
     price_data["Price_Target"] = (price_data["Tomorrow"] > price_data["Close"]).astype(int)
@@ -86,26 +68,22 @@ def _engineer_features(data):
 
     predictors = []
 
-    # Rolling volatility, momentum, and price-vs-mean across multiple horizons
     for h in [2, 5, 10, 20, 63, 126, 252, 504, 1260]:
         price_data[f"Vol_{h}"] = price_data["Return"].rolling(h).std()
         price_data[f"Mom_{h}"] = price_data["Return"].rolling(h).sum()
         price_data[f"Close_Ratio_{h}"] = price_data["Close"] / price_data["Close"].rolling(h).mean()
         predictors += [f"Vol_{h}", f"Mom_{h}", f"Close_Ratio_{h}"]
 
-    # Short-term mean-reversion signal
     for lag in range(1, 6):
         price_data[f"Return_Lag_{lag}"] = price_data["Return"].shift(lag)
         predictors.append(f"Return_Lag_{lag}")
 
-    # RSI (14-day)
     delta = price_data["Close"].diff()
     gain = delta.where(delta > 0, 0).ewm(span=14, adjust=False).mean()
     loss = (-delta.where(delta < 0, 0)).ewm(span=14, adjust=False).mean()
     price_data["RSI_14"] = (100 - (100 / (1 + gain / loss))).fillna(100)
     predictors.append("RSI_14")
 
-    # MACD (12/26/9)
     ema_12 = price_data["Close"].ewm(span=12, adjust=False).mean()
     ema_26 = price_data["Close"].ewm(span=26, adjust=False).mean()
     price_data["MACD_Line"] = ema_12 - ema_26
@@ -113,7 +91,6 @@ def _engineer_features(data):
     price_data["MACD_Hist"] = price_data["MACD_Line"] - price_data["MACD_Signal"]
     predictors += ["MACD_Line", "MACD_Signal", "MACD_Hist"]
 
-    # Bollinger Band position and width (20 & 50-day)
     for bb_w in [20, 50]:
         roll_mean = price_data["Close"].rolling(bb_w).mean()
         roll_std = price_data["Close"].rolling(bb_w).std()
@@ -123,31 +100,23 @@ def _engineer_features(data):
         price_data[f"BB_Width_{bb_w}"] = (upper - lower) / (roll_mean + 1e-9)
         predictors += [f"BB_Pos_{bb_w}", f"BB_Width_{bb_w}"]
 
-    # Normalised ATR (14-day) — true range accounts for gap opens
     hl = price_data["High"] - price_data["Low"]
     hc = (price_data["High"] - price_data["Close"].shift()).abs()
     lc = (price_data["Low"] - price_data["Close"].shift()).abs()
     price_data["ATR_14"] = pd.concat([hl, hc, lc], axis=1).max(axis=1).rolling(14).mean() / price_data["Close"]
     predictors.append("ATR_14")
 
-    # Volume ratio vs. rolling mean — abnormal volume can precede directional moves
     price_data["Vol_Ratio_10"] = price_data["Volume"] / price_data["Volume"].rolling(10).mean()
     price_data["Vol_Ratio_20"] = price_data["Volume"] / price_data["Volume"].rolling(20).mean()
     predictors += ["Vol_Ratio_10", "Vol_Ratio_20"]
 
-    # Intraday high-low range normalised by close
     price_data["HL_Range"] = (price_data["High"] - price_data["Low"]) / price_data["Close"]
     predictors.append("HL_Range")
 
     return price_data.dropna(), predictors
 
-# ---------------------------------------------------------------------------
-# Step 3 — Prune low-importance features
-# ---------------------------------------------------------------------------
-
 def _prune_features(train, predictors, ticker):
-    """Drop the bottom 25% of features by importance before calibration.
-    Noisy low-importance features degrade RF probability estimates."""
+    """Drop the bottom 25% of features to reduce noise before calibration."""
     quick_rf = RandomForestClassifier(n_estimators=50, max_depth=6, random_state=1, n_jobs=-1)
     quick_rf.fit(train[predictors], train["Price_Target"])
     importances = pd.Series(quick_rf.feature_importances_, index=predictors)
@@ -155,16 +124,9 @@ def _prune_features(train, predictors, ticker):
     print(f"[{ticker}] Features after pruning: {len(pruned)}")
     return pruned
 
-# ---------------------------------------------------------------------------
-# Step 4 — Train the price direction classifier
-# ---------------------------------------------------------------------------
-
 def _train_price_classifier(train, test, predictors, ticker):
-    """Tune a RandomForest via RandomizedSearchCV and apply isotonic calibration
-    so the output probability is a true confidence percentage, not a raw model score."""
+    """Tune RF via RandomizedSearchCV and apply isotonic calibration for real confidence percentages."""
     tscv = TimeSeriesSplit(n_splits=3)
-
-    # roc_auc scoring optimises probability ranking, not just accuracy
     search = RandomizedSearchCV(
         RandomForestClassifier(random_state=1, n_jobs=-1),
         {"n_estimators": [100, 200, 300], "max_depth": [6, 8, 10, 12, None],
@@ -181,20 +143,12 @@ def _train_price_classifier(train, test, predictors, ticker):
     direction = int(calibrated_clf.predict(test[predictors])[0])
     prob_up = float(calibrated_clf.predict_proba(test[predictors])[0, 1])
 
-    # Report confidence in whichever direction was predicted, not always P(Up)
     confidence = prob_up if direction == 1 else 1.0 - prob_up
-
     return direction, confidence
 
-# ---------------------------------------------------------------------------
-# Step 5 — Train the price magnitude regressor
-# ---------------------------------------------------------------------------
-
 def _train_price_regressor(train, test, predictors, direction, today_close, ticker):
-    """Tune a RandomForestRegressor, then align its predicted dollar amount with
-    the classifier's direction to prevent a logically incoherent output."""
+    """Predict the magnitude of the move and align the dollar amount to the classifier's direction."""
     tscv = TimeSeriesSplit(n_splits=3)
-
     search_reg = RandomizedSearchCV(
         RandomForestRegressor(random_state=1, n_jobs=-1),
         {"n_estimators": [100, 200, 300], "max_depth": [6, 8, 10, None], "min_samples_leaf": [5, 10, 20]},
@@ -210,7 +164,6 @@ def _train_price_regressor(train, test, predictors, direction, today_close, tick
     train_fit_dates = train.index.strftime("%Y-%m-%d").tolist()
     train_fit_prices = [round(float(p), 2) for p in train_fitted]
 
-    # Align regressor direction with classifier
     if direction == 1:
         forecasted_close = max(forecasted_close, today_close * 1.001)
     else:
@@ -218,14 +171,8 @@ def _train_price_regressor(train, test, predictors, direction, today_close, tick
 
     return round(forecasted_close, 2), train_fit_dates, train_fit_prices
 
-# ---------------------------------------------------------------------------
-# Step 6 — Build the 252-day long-term forecast path
-# ---------------------------------------------------------------------------
-
 def _forecast_long_term(price_data, test_row, predictors, today_close, price_window):
-    """Train three horizon-specific RF regressors targeting cumulative log-returns
-    at 1W, 1M, and 1Y. The daily path is log-linearly interpolated between those
-    anchors — no historical drift assumption baked in."""
+    """Log-linearly interpolate the future price path between 1W, 1M, and 1Y anchors."""
     daily_vol = price_data["Return"].std()
     us_bday = _get_us_bday()
     all_future_dates = pd.date_range(
@@ -281,13 +228,7 @@ def _forecast_long_term(price_data, test_row, predictors, today_close, price_win
 
     return chart_future_dates, chart_future_prices, chart_future_upper, chart_future_lower, extended_forecasts
 
-# ---------------------------------------------------------------------------
-# Step 7 — Build and validate the dividend history DataFrame
-# ---------------------------------------------------------------------------
-
 def _engineer_div_features(data):
-    """Extract payout history, project the next payout date, and compute
-    fundamental features. Returns None if there isn't enough history to model."""
     divs = data[["Dividends"]].copy()
     divs = divs[divs["Dividends"] > 0].copy()
 
@@ -298,7 +239,6 @@ def _engineer_div_features(data):
     last_div_date = divs.index[-1].tz_localize(None)
     avg_days_between = divs.index.to_series().diff().mean().days
 
-    # Walk forward from the last payout until we land past today
     projected_date = last_div_date + pd.Timedelta(days=avg_days_between)
     while projected_date < today_dt:
         projected_date += pd.Timedelta(days=avg_days_between)
@@ -308,6 +248,7 @@ def _engineer_div_features(data):
     divs["Div_Target"] = (divs["Next_Dividend"] > divs["Dividends"]).astype(int)
     divs["Div_Growth_1"] = divs["Dividends"].pct_change(1)
     divs["Div_Growth_2"] = divs["Dividends"].pct_change(2)
+    
     for w in [4, 6, 8]:
         divs[f"Rolling_Avg_{w}"] = divs["Dividends"].rolling(w).mean()
         divs[f"Rolling_Std_{w}"] = divs["Dividends"].rolling(w).std()
@@ -318,24 +259,13 @@ def _engineer_div_features(data):
         "Rolling_Std_6", "Rolling_Avg_8", "Rolling_Std_8",
     ]
     
-    # Capture the actual most recent dividend BEFORE dropping any rows
     today_div = float(divs["Dividends"].iloc[-1])
-
-    # Only drop rows where the predictor features are NaN (the oldest data points).
-    # We MUST keep the most recent row so the model can use it as test_div.
     divs = divs.dropna(subset=div_predictors)
 
     return divs, div_predictors, next_dividend_date, today_div
 
-# ---------------------------------------------------------------------------
-# Step 8 — Train the dividend direction classifier
-# ---------------------------------------------------------------------------
-
 def _train_div_classifier(train_div, test_div, div_predictors):
-    """Calibrated RF classifier for dividend direction — mirrors the price
-    classifier but sized for the much smaller dividend history."""
-    
-    # If all training labels are identical, we have no signal. Default to 50% confidence.
+    # Default to 50% confidence if history is completely flat
     if train_div["Div_Target"].nunique() <= 1:
         div_pred = int(train_div["Div_Target"].iloc[0])
         return div_pred, 0.5
@@ -349,7 +279,6 @@ def _train_div_classifier(train_div, test_div, div_predictors):
         div_pred = int(cal_div.predict(test_div[div_predictors])[0])
         div_conf_up = float(cal_div.predict_proba(test_div[div_predictors])[0, 1])
     except ValueError:
-        # Falls back to uncalibrated RF if isotonic CV fails on small samples
         div_clf = RandomForestClassifier(n_estimators=100, min_samples_split=2, random_state=1, n_jobs=1)
         div_clf.fit(train_div[div_predictors], train_div["Div_Target"])
         div_pred = int(div_clf.predict(test_div[div_predictors])[0])
@@ -361,13 +290,7 @@ def _train_div_classifier(train_div, test_div, div_predictors):
 
     return div_pred, div_conf_up
 
-# ---------------------------------------------------------------------------
-# Step 9 — Train the dividend magnitude regressor
-# ---------------------------------------------------------------------------
-
 def _train_div_regressor(train_div, test_div, div_predictors, div_pred, today_div):
-    """RF regressor for the next payout amount, aligned to the classifier
-    direction — same alignment logic as the price magnitude regressor."""
     div_reg = RandomForestRegressor(n_estimators=100, min_samples_split=2, random_state=1, n_jobs=1)
     div_reg.fit(train_div[div_predictors], train_div["Next_Dividend"])
     forecasted_div = float(div_reg.predict(test_div[div_predictors])[0])
@@ -376,29 +299,17 @@ def _train_div_regressor(train_div, test_div, div_predictors, div_pred, today_di
         max(forecasted_div, today_div * 1.001) if div_pred == 1
         else min(forecasted_div, today_div * 0.999)
     )
-    forecasted_div = round(forecasted_div, 2)
-
-    # Confidence is always reported for the predicted direction, matching price_conf logic
-    return forecasted_div
-
-# ---------------------------------------------------------------------------
-# Step 10 — Build the long-term dividend trajectory
-# ---------------------------------------------------------------------------
+    return round(forecasted_div, 2)
 
 def _forecast_div_long_term(divs, div_predictors, test_div, today_div, forecasted_div, next_dividend_date, avg_days_between, div_window):
-    """Project 3 future payout cycles (cycles 2–4) using horizon-specific RF
-    regressors. Cycle 1 is the already-computed forecasted_div from the regressor
-    so the long-term path is always consistent with the next-payout forecast."""
     payout_vol = divs["Dividends"].pct_change().std()
 
-    # Cycle 1 is pinned to forecasted_div — no retraining needed
     div_future_dates  = [next_dividend_date.strftime("%Y-%m-%d")]
     div_future_amounts = [round(forecasted_div, 2)] 
     moe_1 = 1.96 * payout_vol * np.sqrt(1)
     div_future_upper  = [round(forecasted_div * (1 + moe_1), 2)] 
     div_future_lower  = [round(max(forecasted_div * (1 - moe_1), 0.0), 2)] 
 
-    # Cycles 2–4: each trains its own RF targeting that many payouts ahead
     for cycle in range(2, 5):
         target_col = f"Div_Ahead_{cycle}"
         lt_divs = divs[div_predictors].copy()
@@ -420,7 +331,6 @@ def _forecast_div_long_term(divs, div_predictors, test_div, today_div, forecaste
         div_future_upper.append(round(predicted_amount * (1 + moe), 2)) 
         div_future_lower.append(round(max(predicted_amount * (1 - moe), 0.0), 2)) 
 
-    # Add extended forecasts for cycles 2–4 to the output dict, matching the structure used for price extended forecasts
     div_extended_forecasts = {
         label: {
             "Date": div_future_dates[idx],
@@ -433,39 +343,27 @@ def _forecast_div_long_term(divs, div_predictors, test_div, today_div, forecaste
 
     return div_future_dates, div_future_amounts, div_future_upper, div_future_lower, div_extended_forecasts
 
-# ---------------------------------------------------------------------------
-# Orchestrator — called by app.py
-# ---------------------------------------------------------------------------
-
 def run_real_time_model(ticker, price_window=1000, div_window=20):
-    # Step 1: fetch
+    """Main pipeline orchestrator: ties the classifiers, regressors, and history fetchers together."""
     data = _fetch_data(ticker)
     if data is None:
         return None
 
-    # Step 2: features
     price_data, predictors = _engineer_features(data)
-
-    # Step 3: prune
     train_price = price_data.iloc[-(price_window + 1):-1]
     test_price = price_data.iloc[-1:].copy()
     today_close = float(test_price["Close"].values[0])
+    
     predictors = _prune_features(train_price, predictors, ticker)
-
-    # Step 4: price direction
     direction, price_conf = _train_price_classifier(train_price, test_price, predictors, ticker)
-
-    # Step 5: price magnitude (MAPE calculation removed)
     forecasted_close, train_fit_dates, train_fit_prices = _train_price_regressor(
         train_price, test_price, predictors, direction, today_close, ticker
     )
 
-    # Step 6: long-term price path
     chart_future_dates, chart_future_prices, chart_future_upper, chart_future_lower, extended_forecasts = (
         _forecast_long_term(price_data, test_price, predictors, today_close, price_window)
     )
 
-    # Step 7: dividend features — N/A defaults used as-is for non-dividend stocks
     divs, div_predictors, next_dividend_date, today_div = _engineer_div_features(data)
     
     forecasted_div = "N/A"
@@ -480,13 +378,9 @@ def run_real_time_model(ticker, price_window=1000, div_window=20):
         train_div = divs.iloc[-(div_window + 1):-1]
         test_div = divs.iloc[-1:].copy()
 
-        # Step 8: dividend direction
         div_pred, div_conf_up = _train_div_classifier(train_div, test_div, div_predictors)
-        
-       # Step 9: dividend magnitude
         forecasted_div = _train_div_regressor(train_div, test_div, div_predictors, div_pred, today_div)
 
-        # Determine direction and confidence for dividend prediction output
         if div_pred == 1:
             div_direction_text = "Up"
             final_div_conf = round(div_conf_up * 100, 2)
@@ -494,7 +388,6 @@ def run_real_time_model(ticker, price_window=1000, div_window=20):
             div_direction_text = "Down"
             final_div_conf = round((1.0 - div_conf_up) * 100, 2)
 
-        # Step 10: long-term dividend path
         div_future_dates, div_future_amounts, div_future_upper, div_future_lower, div_extended_forecasts = (
             _forecast_div_long_term(divs, div_predictors, test_div, today_div, forecasted_div, next_dividend_date, avg_days_between, div_window)
         )

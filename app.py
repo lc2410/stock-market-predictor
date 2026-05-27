@@ -4,10 +4,10 @@ from prediction_model import run_real_time_model, get_chart_data
 import logging
 import requests
 
-# Configure logging
 logging.basicConfig(level=logging.INFO)
 
 app = Flask(__name__)
+# Enable CORS so the frontend can hit the API endpoints
 CORS(app)
 
 @app.route('/')
@@ -16,14 +16,14 @@ def home():
 
 @app.route('/search/<string:query>', methods=['GET'])
 def search(query):
+    """Proxy Yahoo Finance autocomplete to bypass browser CORS restrictions."""
     try:
-        # Query Yahoo Finance's autocomplete API
         url = f"https://query2.finance.yahoo.com/v1/finance/search?q={query}&quotesCount=5&newsCount=0"
         headers = {'User-Agent': 'Mozilla/5.0'}
         response = requests.get(url, headers=headers)
         data = response.json()
         
-        # Filter for equities/ETFs and return symbol + name
+        # Only return actual stocks and ETFs, ignoring mutual funds or indices
         quotes = data.get('quotes', [])
         results = [
             {"symbol": q.get("symbol"), "name": q.get("shortname", "")} 
@@ -36,6 +36,7 @@ def search(query):
 
 @app.route('/predict/<string:ticker>', methods=['GET'])
 def predict(ticker):
+    """Run the ML pipeline and return the forecast alongside historical chart data."""
     app.logger.info(f"Received prediction request for ticker: {ticker}")
     try:
         prediction_df = run_real_time_model(ticker.upper())
@@ -44,9 +45,7 @@ def predict(ticker):
             return jsonify({"error": f"Invalid ticker or insufficient data for {ticker}."}), 404
         
         result = prediction_df.to_dict(orient='records')[0]
-        
-        chart_data = get_chart_data(ticker, None)
-        result['Chart_History'] = chart_data
+        result['Chart_History'] = get_chart_data(ticker, None)
 
         app.logger.info(f"Successfully generated prediction for {ticker}.")
         return jsonify(result)

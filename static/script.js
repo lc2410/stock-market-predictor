@@ -4,7 +4,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // DOM Elements
   const predictBtn = document.getElementById('predictBtn');
   const tickerInput = document.getElementById('tickerInput');
-  const clearSearchBtn = document.getElementById('clearSearchBtn'); // <-- NEW
+  const clearSearchBtn = document.getElementById('clearSearchBtn');
   const autocompleteResults = document.getElementById('autocompleteResults');
   const resultContainer = document.getElementById('resultContainer');
   const errorContainer = document.getElementById('errorContainer');
@@ -225,7 +225,6 @@ document.addEventListener('DOMContentLoaded', () => {
     resultContainer.innerHTML = `
       <h3>Forecast for ${data.Ticker}</h3>
 
-      <!-- ── Price Forecast ── -->
       <h2 class="section-heading">Price Forecast</h2>
 
       <div class="results-grid">
@@ -308,7 +307,6 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
       </div>
 
-      <!-- ── Dividend Forecast ── -->
       <h2 class="section-heading">Dividend Forecast</h2>
 
       <div class="results-grid">
@@ -316,18 +314,7 @@ document.addEventListener('DOMContentLoaded', () => {
         ${dividendSection}
       </div>
 
-      ${hasDividends ? `
-      <div class="separator" style="margin-top:24px;"></div>
-      <h4 class="grid-subtitle" style="text-align:left;">Recent Dividend Payouts (Last 12)</h4>
-      <div class="table-wrapper">
-        <table class="history-table">
-          <thead><tr>
-            <th style="text-align:left;">Ex-Dividend Date</th>
-            <th>Amount Per Share</th>
-          </tr></thead>
-          <tbody>${divTableRows}</tbody>
-        </table>
-      </div>` : ''}
+      ${divTableSection}
 
       <div class="separator" style="margin-top:32px;"></div>
       <div style="margin-top:24px;">
@@ -351,8 +338,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (data.Chart_History) setTimeout(() => renderCharts(data), 150);
   }
-
-  // ... [Keep renderCharts and the rest of the file EXACTLY the same]
 
   // --- Chart.js Rendering & Logic ---
   function renderCharts(data) {
