@@ -14,7 +14,11 @@
         <h1>Stock & Dividend Forecaster</h1>
         <p>Enter a U.S. stock ticker symbol to get the next-day forecast.</p>
         <div class="input-group">
-            <input type="text" id="tickerInput" placeholder="e.g., AAPL, VOO, MSFT" autofocus>
+            <div class="input-wrapper">
+                <input type="text" id="tickerInput" placeholder="e.g., AAPL, VOO, MSFT" autofocus autocomplete="off">
+                <span id="clearSearchBtn" title="Clear search">&times;</span>
+                <div id="autocompleteResults" class="autocomplete-items"></div>
+            </div>
             <button id="predictBtn">Get Forecast</button>
         </div>
         <div id="loader" class="loader" style="display: none;"></div>
