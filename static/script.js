@@ -99,6 +99,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function setLoadingState(isLoading) {
     tickerInput.disabled = isLoading;
     predictBtn.disabled = isLoading;
+    predictBtn.style.cursor = isLoading ? 'not-allowed' : '';
     // Hide the 'X' button while loading so they can't interrupt the process prematurely
     clearSearchBtn.style.display = isLoading ? 'none' : (tickerInput.value.length > 0 ? 'block' : 'none');
     
