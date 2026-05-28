@@ -366,7 +366,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const trainFitCoords = (data.Train_Fit_Dates || [])
       .map((d, i) => ({ x: d, y: data.Train_Fit_Prices[i] }))
-      .filter((pt) => pt.x >= histData.dates[0]);
+      // Ensure we do not draw a duplicate point exactly on the anchor date
+      .filter((pt) => pt.x >= histData.dates[0] && pt.x !== anchorDate);
 
     // Unify the historical predictions with the future forecasts via the true projected anchor
     const unifiedLineCoords = [
@@ -531,24 +532,17 @@ document.addEventListener('DOMContentLoaded', () => {
               const pointDate = tooltipItem.raw.x;
               const hoverDate = tooltipItems[0].raw.x;
 
-              // 1. Hide the confidence bounds completely
+              // Hide the confidence bounds completely
               if (label.includes('Bound')) return false;
 
-              // 2. TIME-TRAVEL FIX: Ensure every point strictly matches the hovered Date
+              // Ensure every point strictly matches the hovered Date
               if (pointDate !== hoverDate) return false;
 
-              // 3. DUPLICATE FIX: Prevent multiple points from the exact same dataset showing
+              // Prevent multiple points from the exact same dataset showing
               for (let i = 0; i < currentIndex; i++) {
                 if (tooltipItems[i].datasetIndex === tooltipItem.datasetIndex)
                   return false;
               }
-
-              // 4. CLEANUP: Suppress the blue Projected line exactly on "Today" so only the Historical point shows
-              if (
-                label === 'Projected Stock Prices' &&
-                pointDate === anchorDate
-              )
-                return false;
 
               return true;
             },

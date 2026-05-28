@@ -113,7 +113,9 @@ def _engineer_features(data):
     price_data["HL_Range"] = (price_data["High"] - price_data["Low"]) / price_data["Close"]
     predictors.append("HL_Range")
 
-    return price_data.dropna(), predictors
+    price_data = price_data.dropna(subset=predictors)
+
+    return price_data, predictors
 
 def _prune_features(train, predictors, ticker):
     """Drop the bottom 25% of features to reduce noise before calibration."""
@@ -146,7 +148,7 @@ def _train_price_classifier(train, test, predictors, ticker):
     confidence = prob_up if direction == 1 else 1.0 - prob_up
     return direction, confidence
 
-def _train_price_regressor(train, test, predictors, direction, today_close, ticker):
+def _train_price_regressor(train, test, predictors, direction, today_close, ticker, target_dates):
     """Predict the magnitude of the move and align the dollar amount to the classifier's direction."""
     tscv = TimeSeriesSplit(n_splits=3)
     search_reg = RandomizedSearchCV(
@@ -161,7 +163,7 @@ def _train_price_regressor(train, test, predictors, direction, today_close, tick
     forecasted_close = float(price_reg.predict(test[predictors])[0])
 
     train_fitted = price_reg.predict(train[predictors])
-    train_fit_dates = train.index.strftime("%Y-%m-%d").tolist()
+    train_fit_dates = target_dates.strftime("%Y-%m-%d").tolist()
     train_fit_prices = [round(float(p), 2) for p in train_fitted]
 
     if direction == 1:
@@ -171,7 +173,7 @@ def _train_price_regressor(train, test, predictors, direction, today_close, tick
 
     return round(forecasted_close, 2), train_fit_dates, train_fit_prices
 
-def _forecast_long_term(price_data, test_row, predictors, today_close, price_window):
+def _forecast_long_term(price_data, test_row, predictors, today_close, forecast_close, price_window):
     """Log-linearly interpolate the future price path between 1W, 1M, and 1Y anchors."""
     daily_vol = price_data["Return"].std()
     us_bday = _get_us_bday()
@@ -179,7 +181,7 @@ def _forecast_long_term(price_data, test_row, predictors, today_close, price_win
         start=pd.to_datetime(date.today()) + us_bday, periods=252, freq=us_bday
     )
 
-    horizon_prices = {0: today_close}
+    horizon_prices = {0: today_close, 1: forecast_close}
     for h_label, h_days in [("1_Week", 5), ("1_Month", 21), ("1_Year", 252)]:
         lt_data = price_data[["Close"] + predictors].copy()
         lt_data["Future_Log_Return"] = np.log(lt_data["Close"].shift(-h_days) / lt_data["Close"])
@@ -356,12 +358,15 @@ def run_real_time_model(ticker, price_window=1000, div_window=20):
     
     predictors = _prune_features(train_price, predictors, ticker)
     direction, price_conf = _train_price_classifier(train_price, test_price, predictors, ticker)
+
+    target_dates = price_data.index[-price_window:]
+
     forecasted_close, train_fit_dates, train_fit_prices = _train_price_regressor(
-        train_price, test_price, predictors, direction, today_close, ticker
+        train_price, test_price, predictors, direction, today_close, ticker, target_dates
     )
 
     chart_future_dates, chart_future_prices, chart_future_upper, chart_future_lower, extended_forecasts = (
-        _forecast_long_term(price_data, test_price, predictors, today_close, price_window)
+        _forecast_long_term(price_data, test_price, predictors, today_close, forecasted_close, price_window)
     )
 
     divs, div_predictors, next_dividend_date, today_div = _engineer_div_features(data)
