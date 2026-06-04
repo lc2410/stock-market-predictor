@@ -6,38 +6,40 @@ from sklearn.calibration import CalibratedClassifierCV
 from sklearn.model_selection import TimeSeriesSplit, RandomizedSearchCV
 from pandas.tseries.offsets import CustomBusinessDay
 from pandas.tseries.holiday import USFederalHolidayCalendar
-from datetime import date
 import logging
 
 logging.getLogger('yfinance').setLevel(logging.ERROR)
 
-# Market date utilities
 def _get_us_bday():
     return CustomBusinessDay(calendar=USFederalHolidayCalendar())
-
-def get_next_trading_day():
-    return (pd.to_datetime(date.today()) + _get_us_bday()).strftime('%Y-%m-%d')
-
-def get_future_trading_date(days_ahead):
-    return (pd.to_datetime(date.today()) + _get_us_bday() * days_ahead).strftime('%Y-%m-%d')
 
 def get_chart_data(ticker_symbol, predicted_price=None):
     try:
         ticker = yf.Ticker(ticker_symbol)
         hist = ticker.history(period="1y")
-        dates = hist.index.strftime('%Y-%m-%d').tolist()
-        prices = hist['Close'].tolist()
 
-        if predicted_price is not None:
-            dates.append(get_next_trading_day())
+        if not hist.empty:
+            hist.index = pd.to_datetime(hist.index).tz_localize(None).normalize()
+            hist = hist[~hist.index.duplicated(keep='last')]
+
+        dates = hist.index.strftime('%Y-%m-%d').tolist() if not hist.empty else []
+        prices = hist['Close'].tolist() if not hist.empty else []
+
+        if predicted_price is not None and not hist.empty:
+            anchor_date = hist.index[-1]
+            dates.append((anchor_date + _get_us_bday()).strftime('%Y-%m-%d'))
             prices.append(float(predicted_price))
 
         divs = ticker.dividends.tail(12)
+        if not divs.empty:
+            divs.index = pd.to_datetime(divs.index).tz_localize(None).normalize()
+            divs = divs[~divs.index.duplicated(keep='last')]
+
         return {
             "dates": dates,
             "prices": prices,
-            "dividend_dates": divs.index.strftime('%Y-%m-%d').tolist(),
-            "dividend_amounts": divs.values.tolist(),
+            "dividend_dates": divs.index.strftime('%Y-%m-%d').tolist() if not divs.empty else [],
+            "dividend_amounts": divs.values.tolist() if not divs.empty else [],
         }
     except Exception as e:
         print(f"Error fetching chart data: {e}")
@@ -51,6 +53,9 @@ def _fetch_data(ticker):
     if data.empty:
         print(f"Error: No data found for ticker '{ticker}'.")
         return None
+
+    data.index = pd.to_datetime(data.index).tz_localize(None).normalize()
+    data = data[~data.index.duplicated(keep='last')]
 
     data = data.loc["2010-01-01":].copy()
 
@@ -173,12 +178,11 @@ def _train_price_regressor(train, test, predictors, direction, today_close, tick
 
     return round(forecasted_close, 2), train_fit_dates, train_fit_prices
 
-def _forecast_long_term(price_data, test_row, predictors, today_close, forecast_close, price_window):
-    """Log-linearly interpolate the future price path between 1W, 1M, and 1Y anchors."""
+def _forecast_long_term(price_data, test_row, predictors, today_close, forecast_close, price_window, anchor_date):
     daily_vol = price_data["Return"].std()
     us_bday = _get_us_bday()
     all_future_dates = pd.date_range(
-        start=pd.to_datetime(date.today()) + us_bday, periods=252, freq=us_bday
+        start=anchor_date + us_bday, periods=252, freq=us_bday
     )
 
     horizon_prices = {0: today_close, 1: forecast_close}
@@ -230,19 +234,21 @@ def _forecast_long_term(price_data, test_row, predictors, today_close, forecast_
 
     return chart_future_dates, chart_future_prices, chart_future_upper, chart_future_lower, extended_forecasts
 
-def _engineer_div_features(data):
+def _engineer_div_features(data, anchor_date):
     divs = data[["Dividends"]].copy()
     divs = divs[divs["Dividends"] > 0].copy()
 
     if len(divs) < 10:
         return None, None, pd.NaT, 0.0
 
-    today_dt = pd.to_datetime(date.today())
-    last_div_date = divs.index[-1].tz_localize(None)
+    last_div_date = divs.index[-1]
     avg_days_between = divs.index.to_series().diff().mean().days
+    
+    if pd.isna(avg_days_between) or avg_days_between <= 0:
+        avg_days_between = 90 
 
     projected_date = last_div_date + pd.Timedelta(days=avg_days_between)
-    while projected_date < today_dt:
+    while projected_date <= anchor_date:
         projected_date += pd.Timedelta(days=avg_days_between)
     next_dividend_date = projected_date
 
@@ -351,6 +357,9 @@ def run_real_time_model(ticker, price_window=1000, div_window=20):
     if data is None:
         return None
 
+    anchor_date = data.index[-1]
+    next_trading_day_str = (anchor_date + _get_us_bday()).strftime('%Y-%m-%d')
+
     price_data, predictors = _engineer_features(data)
     train_price = price_data.iloc[-(price_window + 1):-1]
     test_price = price_data.iloc[-1:].copy()
@@ -366,10 +375,10 @@ def run_real_time_model(ticker, price_window=1000, div_window=20):
     )
 
     chart_future_dates, chart_future_prices, chart_future_upper, chart_future_lower, extended_forecasts = (
-        _forecast_long_term(price_data, test_price, predictors, today_close, forecasted_close, price_window)
+        _forecast_long_term(price_data, test_price, predictors, today_close, forecasted_close, price_window, anchor_date)
     )
 
-    divs, div_predictors, next_dividend_date, today_div = _engineer_div_features(data)
+    divs, div_predictors, next_dividend_date, today_div = _engineer_div_features(data, anchor_date)
     
     forecasted_div = "N/A"
     div_direction_text = "N/A"
@@ -380,6 +389,9 @@ def run_real_time_model(ticker, price_window=1000, div_window=20):
 
     if divs is not None:
         avg_days_between = divs.index.to_series().diff().mean().days
+        if pd.isna(avg_days_between) or avg_days_between <= 0:
+            avg_days_between = 90
+            
         train_div = divs.iloc[-(div_window + 1):-1]
         test_div = divs.iloc[-1:].copy()
 
@@ -404,7 +416,7 @@ def run_real_time_model(ticker, price_window=1000, div_window=20):
     )
 
     return pd.DataFrame({
-        "Next_Trading_Day":        [get_next_trading_day()],
+        "Next_Trading_Day":        [next_trading_day_str],
         "Ticker":                  [ticker],
         "Price_Predicted":         ["Up" if direction == 1 else "Down"],
         "Price_Confidence (%)":    [round(price_conf * 100, 2)],

@@ -1,7 +1,6 @@
 Chart.register(Chart.Filler);
 
 document.addEventListener('DOMContentLoaded', () => {
-  // DOM Elements
   const predictBtn = document.getElementById('predictBtn');
   const tickerInput = document.getElementById('tickerInput');
   const clearSearchBtn = document.getElementById('clearSearchBtn');
@@ -10,21 +9,18 @@ document.addEventListener('DOMContentLoaded', () => {
   const errorContainer = document.getElementById('errorContainer');
   const loader = document.getElementById('loader');
 
-  // Chart instances
   let priceChartInstance = null;
   let navChartInstance = null;
   let dividendChartInstance = null;
 
-  // --- Smart Search Logic ---
   let debounceTimer;
-  let isSearching = false; // true while a prediction is in-flight
-  let latestSearchId = 0;  // tracks the most recent search sequence
+  let isSearching = false; 
+  let latestSearchId = 0;  
 
   tickerInput.addEventListener('input', (e) => {
     const query = e.target.value.trim();
-    const currentSearchId = ++latestSearchId; // Increment ID on every keystroke
+    const currentSearchId = ++latestSearchId; 
     
-    // Toggle X button visibility based on input length
     clearSearchBtn.style.display = query.length > 0 ? 'block' : 'none';
 
     clearTimeout(debounceTimer);
@@ -33,15 +29,11 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
     
-    // Wait 300ms after user stops typing to fetch results
     debounceTimer = setTimeout(async () => {
       try {
         const res = await fetch(`/search/${query}`);
         const data = await res.json();
         
-        // RACE CONDITION FIX: 
-        // If a prediction is running, or if the user typed something else 
-        // while this network request was flying, throw this data away.
         if (isSearching || currentSearchId !== latestSearchId) return;
         
         if (data.length > 0) {
@@ -60,25 +52,20 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 300);
   });
 
-  // Clear Button Click Handler
   clearSearchBtn.addEventListener('click', () => {
     tickerInput.value = '';
     clearSearchBtn.style.display = 'none';
     autocompleteResults.innerHTML = '';
-    latestSearchId++; // Kill any flying autocomplete requests
+    latestSearchId++; 
     
-    // Destroy existing charts to free memory
     if (priceChartInstance) priceChartInstance.destroy();
     if (navChartInstance) navChartInstance.destroy();
     if (dividendChartInstance) dividendChartInstance.destroy();
     
-    // Wipe the forecast data from the screen
     clearMessages();
-    
     tickerInput.focus();
   });
 
-  // Handle clicking an autocomplete result
   autocompleteResults.addEventListener('click', (e) => {
     const item = e.target.closest('.autocomplete-item');
     if (item && item.getAttribute('data-symbol')) {
@@ -88,19 +75,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Hide autocomplete when clicking outside the input or dropdown
   document.addEventListener('click', (e) => {
     if (e.target !== tickerInput && !autocompleteResults.contains(e.target) && e.target !== clearSearchBtn) {
       autocompleteResults.innerHTML = '';
     }
   });
 
-  // --- UI Control Helpers ---
   function setLoadingState(isLoading) {
     tickerInput.disabled = isLoading;
     predictBtn.disabled = isLoading;
     predictBtn.style.cursor = isLoading ? 'not-allowed' : '';
-    // Hide the 'X' button while loading so they can't interrupt the process prematurely
     clearSearchBtn.style.display = isLoading ? 'none' : (tickerInput.value.length > 0 ? 'block' : 'none');
     
     if (isLoading) {
@@ -110,7 +94,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // --- API Interaction ---
   const handlePrediction = async () => {
     const ticker = tickerInput.value.trim().toUpperCase();
     if (!ticker) {
@@ -118,9 +101,8 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
     
-    // Cancel any pending autocomplete fetch and close the dropdown immediately
     clearTimeout(debounceTimer);
-    latestSearchId++; // Increment to invalidate any flying autocomplete fetches
+    latestSearchId++; 
     autocompleteResults.innerHTML = '';
     isSearching = true;
 
@@ -136,19 +118,18 @@ document.addEventListener('DOMContentLoaded', () => {
       showError(error.message);
     } finally {
       setLoadingState(false);
-      isSearching = false; // Re-enable autocomplete for the next search
+      isSearching = false; 
     }
   };
 
   predictBtn.addEventListener('click', handlePrediction);
   tickerInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
-        e.preventDefault(); // Prevents accidental double-submissions
+        e.preventDefault(); 
         handlePrediction();
     }
   });
 
-  // --- HTML UI Rendering ---
   function displayResult(data) {
     const hasDividends = data.Next_Dividend_Date !== 'N/A';
     const divExt = data.Div_Extended_Forecasts || {};
@@ -182,13 +163,11 @@ document.addEventListener('DOMContentLoaded', () => {
       <div class="result-item">${typeof data.Forecasted_Dividend === 'number' ? '$' + data.Forecasted_Dividend.toFixed(2) : 'N/A'}</div>
       ${divLongTermRows}`;
 
-    // Build separate row sets for price and dividend tables
     const histData = data.Chart_History;
     let priceTableRows = '';
     let divTableRows = '';
 
     if (histData) {
-      // Price rows — newest first
       for (let i = histData.dates.length - 1; i >= 0; i--) {
         priceTableRows += `
           <tr>
@@ -197,13 +176,12 @@ document.addEventListener('DOMContentLoaded', () => {
           </tr>`;
       }
 
-      // Dividend rows — last 12 payouts regardless of date range
       if (histData.dividend_dates && histData.dividend_dates.length) {
         for (let i = histData.dividend_dates.length - 1; i >= 0; i--) {
           divTableRows += `
             <tr>
               <td style="text-align:left;">${histData.dividend_dates[i]}</td>
-              <td><strong style="color:#1877f2">$${histData.dividend_amounts[i].toFixed(2)}</strong></td>
+              <td>$${histData.dividend_amounts[i].toFixed(2)}</td>
             </tr>`;
         }
       }
@@ -262,16 +240,17 @@ document.addEventListener('DOMContentLoaded', () => {
       </div>
 
       <div class="separator" style="margin-top:32px;"></div>
-      <div class="chart-box" style="position:relative;margin-top:24px;">
+      
+      <div class="chart-box" style="position:relative;margin-top:24px;margin-bottom:16px;">
         <canvas id="priceChart"></canvas>
       </div>
-      <div style="position:relative;width:100%;margin-top:-8px;margin-bottom:32px;">
-        <div style="display:flex;justify-content:flex-end;margin-bottom:4px;">
+      <div style="position:relative;width:100%;margin-bottom:40px;display:flex;flex-direction:column;gap:12px;">
+        <div style="display:flex;justify-content:flex-end;">
           <button id="navResetBtn" style="
-            padding:3px 10px;font-size:11px;font-weight:600;
+            padding:6px 14px;font-size:12px;font-weight:600;
             background:#f1f5f9;color:#374151;border:1px solid #d1d5db;
-            border-radius:4px;cursor:pointer;
-          " title="Reset to full range">↺ Reset</button>
+            border-radius:4px;cursor:pointer;transition:background 0.2s;
+          " onmouseover="this.style.background='#e2e8f0'" onmouseout="this.style.background='#f1f5f9'" title="Reset to full range">↺ Reset</button>
         </div>
         <div id="navWrapper" style="
           position:relative;width:100%;height:72px;
@@ -340,60 +319,49 @@ document.addEventListener('DOMContentLoaded', () => {
     if (data.Chart_History) setTimeout(() => renderCharts(data), 150);
   }
 
-  // --- Chart.js Rendering & Logic ---
   function renderCharts(data) {
     const histData = data.Chart_History;
 
-    // Clean up existing instances before drawing new ones
     if (priceChartInstance) priceChartInstance.destroy();
     if (navChartInstance) navChartInstance.destroy();
     if (dividendChartInstance) dividendChartInstance.destroy();
 
-    // 1. Prepare Data Coordinates
-    const historyCoords = histData.dates.map((d, i) => ({
-      x: d,
-      y: histData.prices[i],
-    }));
+    const historyMap = new Map();
+    histData.dates.forEach((d, i) => historyMap.set(d, histData.prices[i]));
+    
+    const historyCoords = Array.from(historyMap, ([x, y]) => ({ x, y }))
+                               .sort((a, b) => new Date(a.x) - new Date(b.x));
 
-    const anchorDate = histData.dates[histData.dates.length - 1];
-    const anchorPrice = histData.prices[histData.prices.length - 1];
+    const anchorDate = historyCoords[historyCoords.length - 1].x;
+    const anchorPrice = historyCoords[historyCoords.length - 1].y;
 
-    // Extract the model's in-sample prediction for the current "Today" point
-    const projectedToday =
-      data.Train_Fit_Prices && data.Train_Fit_Prices.length > 0
+    const projectedToday = data.Train_Fit_Prices && data.Train_Fit_Prices.length > 0
         ? data.Train_Fit_Prices[data.Train_Fit_Prices.length - 1]
         : anchorPrice;
 
-    const trainFitCoords = (data.Train_Fit_Dates || [])
-      .map((d, i) => ({ x: d, y: data.Train_Fit_Prices[i] }))
-      // Ensure we do not draw a duplicate point exactly on the anchor date
-      .filter((pt) => pt.x >= histData.dates[0] && pt.x !== anchorDate);
+    const unifiedMap = new Map();
+    if (data.Train_Fit_Dates) {
+        data.Train_Fit_Dates.forEach((d, i) => {
+            if (d >= historyCoords[0].x && d !== anchorDate) {
+                unifiedMap.set(d, data.Train_Fit_Prices[i]);
+            }
+        });
+    }
+    unifiedMap.set(anchorDate, projectedToday);
+    data.Chart_Future_Dates.forEach((d, i) => unifiedMap.set(d, data.Chart_Future_Prices[i]));
+    
+    const unifiedLineCoords = Array.from(unifiedMap, ([x, y]) => ({ x, y }))
+                                   .sort((a, b) => new Date(a.x) - new Date(b.x));
 
-    // Unify the historical predictions with the future forecasts via the true projected anchor
-    const unifiedLineCoords = [
-      ...trainFitCoords,
-      { x: anchorDate, y: projectedToday },
-      ...data.Chart_Future_Dates.map((d, i) => ({
-        x: d,
-        y: data.Chart_Future_Prices[i],
-      })),
-    ];
+    const upperMap = new Map();
+    upperMap.set(anchorDate, projectedToday);
+    data.Chart_Future_Dates.forEach((d, i) => upperMap.set(d, data.Chart_Future_Upper[i]));
+    const upperCoords = Array.from(upperMap, ([x, y]) => ({ x, y })).sort((a, b) => new Date(a.x) - new Date(b.x));
 
-    const upperCoords = [
-      { x: anchorDate, y: projectedToday },
-      ...data.Chart_Future_Dates.map((d, i) => ({
-        x: d,
-        y: data.Chart_Future_Upper[i],
-      })),
-    ];
-
-    const lowerCoords = [
-      { x: anchorDate, y: projectedToday },
-      ...data.Chart_Future_Dates.map((d, i) => ({
-        x: d,
-        y: data.Chart_Future_Lower[i],
-      })),
-    ];
+    const lowerMap = new Map();
+    lowerMap.set(anchorDate, projectedToday);
+    data.Chart_Future_Dates.forEach((d, i) => lowerMap.set(d, data.Chart_Future_Lower[i]));
+    const lowerCoords = Array.from(lowerMap, ([x, y]) => ({ x, y })).sort((a, b) => new Date(a.x) - new Date(b.x));
 
     const allDates = [...histData.dates, ...data.Chart_Future_Dates];
     const minTs = new Date(allDates[0]).getTime();
@@ -401,7 +369,6 @@ document.addEventListener('DOMContentLoaded', () => {
     let viewMin = minTs;
     let viewMax = maxTs;
 
-    // 2. Initialize Main Price Chart
     const ctxPrice = document.getElementById('priceChart').getContext('2d');
     priceChartInstance = new Chart(ctxPrice, {
       type: 'line',
@@ -493,6 +460,11 @@ document.addEventListener('DOMContentLoaded', () => {
             labels: {
               filter: (item) => !item.text.includes('Bound'),
               usePointStyle: false,
+              sort: (a, b) => {
+                if (a.text === 'Historical Stock Prices') return -1;
+                if (b.text === 'Historical Stock Prices') return 1;
+                return 0;
+              }
             },
             onClick: function (e, legendItem, legend) {
               const chart = legend.chart;
@@ -521,7 +493,7 @@ document.addEventListener('DOMContentLoaded', () => {
                   content: 'Today',
                   position: 'start',
                   font: { size: 10 },
-                  color: '#666',
+                  color: '#ffffff',
                 },
               },
             },
@@ -532,13 +504,9 @@ document.addEventListener('DOMContentLoaded', () => {
               const pointDate = tooltipItem.raw.x;
               const hoverDate = tooltipItems[0].raw.x;
 
-              // Hide the confidence bounds completely
               if (label.includes('Bound')) return false;
-
-              // Ensure every point strictly matches the hovered Date
               if (pointDate !== hoverDate) return false;
 
-              // Prevent multiple points from the exact same dataset showing
               for (let i = 0; i < currentIndex; i++) {
                 if (tooltipItems[i].datasetIndex === tooltipItem.datasetIndex)
                   return false;
@@ -556,7 +524,6 @@ document.addEventListener('DOMContentLoaded', () => {
       },
     });
 
-    // 3. Initialize Navigator Chart (Mini Timeline)
     const ctxNav = document.getElementById('navChart').getContext('2d');
     navChartInstance = new Chart(ctxNav, {
       type: 'line',
@@ -603,7 +570,6 @@ document.addEventListener('DOMContentLoaded', () => {
       },
     });
 
-    // 4. Setup Custom Drag and Zoom Functionality for Navigator
     const navWrapper = document.getElementById('navWrapper');
     const navLeft = document.getElementById('navLeft');
     const navRight = document.getElementById('navRight');
@@ -747,7 +713,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     setTimeout(updateOverlays, 200);
 
-    // 5. Initialize Dividend Chart
     const noDividend =
       data.Next_Dividend_Date === 'N/A' || !histData.dividend_dates.length;
 
@@ -755,38 +720,60 @@ document.addEventListener('DOMContentLoaded', () => {
       document.getElementById('dividendChart').style.display = 'none';
       document.getElementById('noDividendOverlay').style.display = 'block';
     } else {
-      const divLabels = [...histData.dividend_dates];
-      const divAmounts = [...histData.dividend_amounts];
-      const bgColors = Array(divAmounts.length).fill('#111827');
+      const divLabelsMap = new Map();
+      
+      histData.dividend_dates.forEach((d, i) => {
+          divLabelsMap.set(d, {
+              amount: histData.dividend_amounts[i],
+              bgColor: '#111827',
+              upper: null,
+              lower: null,
+              isEst: false
+          });
+      });
 
       const futureDates = data.Div_Future_Dates || [];
       const futureAmounts = data.Div_Future_Amounts || [];
       const futureUpper = data.Div_Future_Upper || [];
       const futureLower = data.Div_Future_Lower || [];
 
-      // Pad historical data so the confidence indices line up with the labels array
-      const ciUpper = [...Array(divAmounts.length).fill(null)];
-      const ciLower = [...Array(divAmounts.length).fill(null)];
-
       futureDates.forEach((d, i) => {
-        const label = i === 0 ? d + ' (Est.)' : d + ` (Est. +${i + 1})`;
-        divLabels.push(label);
-        divAmounts.push(futureAmounts[i]);
-        bgColors.push('#93c5fd');
-        ciUpper.push(futureUpper[i]);
-        ciLower.push(futureLower[i]);
+          divLabelsMap.set(d, {
+              amount: futureAmounts[i],
+              bgColor: '#93c5fd',
+              upper: futureUpper[i],
+              lower: futureLower[i],
+              isEst: true
+          });
+      });
+
+      const sortedDivKeys = Array.from(divLabelsMap.keys()).sort((a, b) => new Date(a) - new Date(b));
+      
+      const finalDivLabels = [];
+      const finalDivAmounts = [];
+      const finalBgColors = [];
+      const ciUpper = [];
+      const ciLower = [];
+
+      sortedDivKeys.forEach(dateKey => {
+          const entry = divLabelsMap.get(dateKey);
+          finalDivLabels.push(entry.isEst ? `${dateKey} (Est.)` : dateKey);
+          finalDivAmounts.push(entry.amount);
+          finalBgColors.push(entry.bgColor);
+          ciUpper.push(entry.upper);
+          ciLower.push(entry.lower);
       });
 
       const ctxDiv = document.getElementById('dividendChart').getContext('2d');
       dividendChartInstance = new Chart(ctxDiv, {
         type: 'bar',
         data: {
-          labels: divLabels,
+          labels: finalDivLabels,
           datasets: [
             {
               label: 'Dividend Payout ($)',
-              data: divAmounts,
-              backgroundColor: bgColors,
+              data: finalDivAmounts,
+              backgroundColor: finalBgColors,
               borderRadius: 5,
               borderSkipped: false,
             },
@@ -843,7 +830,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 label: (ctx) => {
                   const amount = ctx.parsed.y;
                   const i = ctx.dataIndex;
-                  if (ciUpper[i] !== null) {
+                  if (ciUpper[i] !== null && ciUpper[i] !== undefined) {
                     return [
                       `Projected Dividend Payout: $${amount.toFixed(2)}`,
                       `95% CI: $${ciLower[i].toFixed(2)} – $${ciUpper[i].toFixed(2)}`,
@@ -859,7 +846,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // --- Helper Functions ---
   function showError(message) {
     errorContainer.textContent = `Error: ${message}`;
   }
