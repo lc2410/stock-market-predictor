@@ -6,38 +6,41 @@ from sklearn.calibration import CalibratedClassifierCV
 from sklearn.model_selection import TimeSeriesSplit, RandomizedSearchCV
 from pandas.tseries.offsets import CustomBusinessDay
 from pandas.tseries.holiday import USFederalHolidayCalendar
-from datetime import date
 import logging
 
 logging.getLogger('yfinance').setLevel(logging.ERROR)
 
-# Market date utilities
 def _get_us_bday():
     return CustomBusinessDay(calendar=USFederalHolidayCalendar())
 
-def get_next_trading_day():
-    return (pd.to_datetime(date.today()) + _get_us_bday()).strftime('%Y-%m-%d')
-
-def get_future_trading_date(days_ahead):
-    return (pd.to_datetime(date.today()) + _get_us_bday() * days_ahead).strftime('%Y-%m-%d')
-
 def get_chart_data(ticker_symbol, predicted_price=None):
+    """Fetches 1 year of price history and the last 12 dividend payouts for chart rendering."""
     try:
         ticker = yf.Ticker(ticker_symbol)
         hist = ticker.history(period="1y")
-        dates = hist.index.strftime('%Y-%m-%d').tolist()
-        prices = hist['Close'].tolist()
 
-        if predicted_price is not None:
-            dates.append(get_next_trading_day())
+        if not hist.empty:
+            hist.index = pd.to_datetime(hist.index).tz_localize(None).normalize()
+            hist = hist[~hist.index.duplicated(keep='last')]
+
+        dates = hist.index.strftime('%Y-%m-%d').tolist() if not hist.empty else []
+        prices = hist['Close'].tolist() if not hist.empty else []
+
+        if predicted_price is not None and not hist.empty:
+            anchor_date = hist.index[-1]
+            dates.append((anchor_date + _get_us_bday()).strftime('%Y-%m-%d'))
             prices.append(float(predicted_price))
 
         divs = ticker.dividends.tail(12)
+        if not divs.empty:
+            divs.index = pd.to_datetime(divs.index).tz_localize(None).normalize()
+            divs = divs[~divs.index.duplicated(keep='last')]
+
         return {
             "dates": dates,
             "prices": prices,
-            "dividend_dates": divs.index.strftime('%Y-%m-%d').tolist(),
-            "dividend_amounts": divs.values.tolist(),
+            "dividend_dates": divs.index.strftime('%Y-%m-%d').tolist() if not divs.empty else [],
+            "dividend_amounts": divs.values.tolist() if not divs.empty else [],
         }
     except Exception as e:
         print(f"Error fetching chart data: {e}")
@@ -52,6 +55,9 @@ def _fetch_data(ticker):
         print(f"Error: No data found for ticker '{ticker}'.")
         return None
 
+    data.index = pd.to_datetime(data.index).tz_localize(None).normalize()
+    data = data[~data.index.duplicated(keep='last')]
+
     data = data.loc["2010-01-01":].copy()
 
     if len(data) < 1261:
@@ -61,6 +67,7 @@ def _fetch_data(ticker):
     return data
 
 def _engineer_features(data):
+    """Builds momentum, volatility, RSI, MACD, Bollinger Band, ATR, and volume ratio features for the price model."""
     price_data = data[["Close", "Volume", "High", "Low"]].copy()
     price_data["Tomorrow"] = price_data["Close"].shift(-1)
     price_data["Price_Target"] = (price_data["Tomorrow"] > price_data["Close"]).astype(int)
@@ -173,12 +180,12 @@ def _train_price_regressor(train, test, predictors, direction, today_close, tick
 
     return round(forecasted_close, 2), train_fit_dates, train_fit_prices
 
-def _forecast_long_term(price_data, test_row, predictors, today_close, forecast_close, price_window):
-    """Log-linearly interpolate the future price path between 1W, 1M, and 1Y anchors."""
+def _forecast_long_term(price_data, test_row, predictors, today_close, forecast_close, price_window, anchor_date):
+    """Projects prices out 252 trading days using log-interpolation between trained horizon anchors (next day, 1 week, 1 month, 1 year)."""
     daily_vol = price_data["Return"].std()
     us_bday = _get_us_bday()
     all_future_dates = pd.date_range(
-        start=pd.to_datetime(date.today()) + us_bday, periods=252, freq=us_bday
+        start=anchor_date + us_bday, periods=252, freq=us_bday
     )
 
     horizon_prices = {0: today_close, 1: forecast_close}
@@ -201,6 +208,7 @@ def _forecast_long_term(price_data, test_row, predictors, today_close, forecast_
     anchors = sorted(horizon_prices.items())
 
     def interp_price(t):
+        # Log-linear interpolation between anchor points keeps price changes multiplicative rather than additive
         for i in range(len(anchors) - 1):
             t0, p0 = anchors[i]
             t1, p1 = anchors[i + 1]
@@ -230,19 +238,22 @@ def _forecast_long_term(price_data, test_row, predictors, today_close, forecast_
 
     return chart_future_dates, chart_future_prices, chart_future_upper, chart_future_lower, extended_forecasts
 
-def _engineer_div_features(data):
+def _engineer_div_features(data, anchor_date):
+    """Extracts dividend history, projects the next payout date, and builds growth/rolling features for the dividend models."""
     divs = data[["Dividends"]].copy()
     divs = divs[divs["Dividends"] > 0].copy()
 
     if len(divs) < 10:
         return None, None, pd.NaT, 0.0
 
-    today_dt = pd.to_datetime(date.today())
-    last_div_date = divs.index[-1].tz_localize(None)
+    last_div_date = divs.index[-1]
     avg_days_between = divs.index.to_series().diff().mean().days
+    
+    if pd.isna(avg_days_between) or avg_days_between <= 0:
+        avg_days_between = 90  # Reasonable quarterly fallback for sparse dividend histories
 
     projected_date = last_div_date + pd.Timedelta(days=avg_days_between)
-    while projected_date < today_dt:
+    while projected_date <= anchor_date:
         projected_date += pd.Timedelta(days=avg_days_between)
     next_dividend_date = projected_date
 
@@ -267,7 +278,7 @@ def _engineer_div_features(data):
     return divs, div_predictors, next_dividend_date, today_div
 
 def _train_div_classifier(train_div, test_div, div_predictors):
-    # Default to 50% confidence if history is completely flat
+    # Can't train a classifier when every row has the same label — just return neutral confidence
     if train_div["Div_Target"].nunique() <= 1:
         div_pred = int(train_div["Div_Target"].iloc[0])
         return div_pred, 0.5
@@ -281,6 +292,7 @@ def _train_div_classifier(train_div, test_div, div_predictors):
         div_pred = int(cal_div.predict(test_div[div_predictors])[0])
         div_conf_up = float(cal_div.predict_proba(test_div[div_predictors])[0, 1])
     except ValueError:
+        # Isotonic calibration needs at least 2 classes per fold; fall back to uncalibrated RF if splits are too small
         div_clf = RandomForestClassifier(n_estimators=100, min_samples_split=2, random_state=1, n_jobs=1)
         div_clf.fit(train_div[div_predictors], train_div["Div_Target"])
         div_pred = int(div_clf.predict(test_div[div_predictors])[0])
@@ -293,6 +305,7 @@ def _train_div_classifier(train_div, test_div, div_predictors):
     return div_pred, div_conf_up
 
 def _train_div_regressor(train_div, test_div, div_predictors, div_pred, today_div):
+    """Trains a basic RF regressor on dividend history and nudges the output to stay consistent with the classifier's direction."""
     div_reg = RandomForestRegressor(n_estimators=100, min_samples_split=2, random_state=1, n_jobs=1)
     div_reg.fit(train_div[div_predictors], train_div["Next_Dividend"])
     forecasted_div = float(div_reg.predict(test_div[div_predictors])[0])
@@ -304,6 +317,7 @@ def _train_div_regressor(train_div, test_div, div_predictors, div_pred, today_di
     return round(forecasted_div, 2)
 
 def _forecast_div_long_term(divs, div_predictors, test_div, today_div, forecasted_div, next_dividend_date, avg_days_between, div_window):
+    """Forecasts the next 4 dividend cycles, training a separate regressor per cycle and widening the CI with sqrt(cycle)."""
     payout_vol = divs["Dividends"].pct_change().std()
 
     div_future_dates  = [next_dividend_date.strftime("%Y-%m-%d")]
@@ -351,6 +365,9 @@ def run_real_time_model(ticker, price_window=1000, div_window=20):
     if data is None:
         return None
 
+    anchor_date = data.index[-1]
+    next_trading_day_str = (anchor_date + _get_us_bday()).strftime('%Y-%m-%d')
+
     price_data, predictors = _engineer_features(data)
     train_price = price_data.iloc[-(price_window + 1):-1]
     test_price = price_data.iloc[-1:].copy()
@@ -366,10 +383,10 @@ def run_real_time_model(ticker, price_window=1000, div_window=20):
     )
 
     chart_future_dates, chart_future_prices, chart_future_upper, chart_future_lower, extended_forecasts = (
-        _forecast_long_term(price_data, test_price, predictors, today_close, forecasted_close, price_window)
+        _forecast_long_term(price_data, test_price, predictors, today_close, forecasted_close, price_window, anchor_date)
     )
 
-    divs, div_predictors, next_dividend_date, today_div = _engineer_div_features(data)
+    divs, div_predictors, next_dividend_date, today_div = _engineer_div_features(data, anchor_date)
     
     forecasted_div = "N/A"
     div_direction_text = "N/A"
@@ -380,6 +397,9 @@ def run_real_time_model(ticker, price_window=1000, div_window=20):
 
     if divs is not None:
         avg_days_between = divs.index.to_series().diff().mean().days
+        if pd.isna(avg_days_between) or avg_days_between <= 0:
+            avg_days_between = 90  # Reasonable quarterly fallback for sparse dividend histories
+            
         train_div = divs.iloc[-(div_window + 1):-1]
         test_div = divs.iloc[-1:].copy()
 
@@ -403,9 +423,16 @@ def run_real_time_model(ticker, price_window=1000, div_window=20):
         else "N/A"
     )
 
+    try:
+        info = yf.Ticker(ticker).info
+        company_name = info.get("longName") or info.get("shortName") or ticker
+    except Exception:
+        company_name = ticker
+
     return pd.DataFrame({
-        "Next_Trading_Day":        [get_next_trading_day()],
+        "Next_Trading_Day":        [next_trading_day_str],
         "Ticker":                  [ticker],
+        "Company_Name":            [company_name],
         "Price_Predicted":         ["Up" if direction == 1 else "Down"],
         "Price_Confidence (%)":    [round(price_conf * 100, 2)],
         "Forecasted_Close":        [forecasted_close],
