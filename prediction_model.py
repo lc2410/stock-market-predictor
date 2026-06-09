@@ -14,6 +14,7 @@ def _get_us_bday():
     return CustomBusinessDay(calendar=USFederalHolidayCalendar())
 
 def get_chart_data(ticker_symbol, predicted_price=None):
+    """Fetches 1 year of price history and the last 12 dividend payouts for chart rendering."""
     try:
         ticker = yf.Ticker(ticker_symbol)
         hist = ticker.history(period="1y")
@@ -66,6 +67,7 @@ def _fetch_data(ticker):
     return data
 
 def _engineer_features(data):
+    """Builds momentum, volatility, RSI, MACD, Bollinger Band, ATR, and volume ratio features for the price model."""
     price_data = data[["Close", "Volume", "High", "Low"]].copy()
     price_data["Tomorrow"] = price_data["Close"].shift(-1)
     price_data["Price_Target"] = (price_data["Tomorrow"] > price_data["Close"]).astype(int)
@@ -179,6 +181,7 @@ def _train_price_regressor(train, test, predictors, direction, today_close, tick
     return round(forecasted_close, 2), train_fit_dates, train_fit_prices
 
 def _forecast_long_term(price_data, test_row, predictors, today_close, forecast_close, price_window, anchor_date):
+    """Projects prices out 252 trading days using log-interpolation between trained horizon anchors (next day, 1 week, 1 month, 1 year)."""
     daily_vol = price_data["Return"].std()
     us_bday = _get_us_bday()
     all_future_dates = pd.date_range(
@@ -205,6 +208,7 @@ def _forecast_long_term(price_data, test_row, predictors, today_close, forecast_
     anchors = sorted(horizon_prices.items())
 
     def interp_price(t):
+        # Log-linear interpolation between anchor points keeps price changes multiplicative rather than additive
         for i in range(len(anchors) - 1):
             t0, p0 = anchors[i]
             t1, p1 = anchors[i + 1]
@@ -235,6 +239,7 @@ def _forecast_long_term(price_data, test_row, predictors, today_close, forecast_
     return chart_future_dates, chart_future_prices, chart_future_upper, chart_future_lower, extended_forecasts
 
 def _engineer_div_features(data, anchor_date):
+    """Extracts dividend history, projects the next payout date, and builds growth/rolling features for the dividend models."""
     divs = data[["Dividends"]].copy()
     divs = divs[divs["Dividends"] > 0].copy()
 
@@ -245,7 +250,7 @@ def _engineer_div_features(data, anchor_date):
     avg_days_between = divs.index.to_series().diff().mean().days
     
     if pd.isna(avg_days_between) or avg_days_between <= 0:
-        avg_days_between = 90 
+        avg_days_between = 90  # Reasonable quarterly fallback for sparse dividend histories
 
     projected_date = last_div_date + pd.Timedelta(days=avg_days_between)
     while projected_date <= anchor_date:
@@ -273,7 +278,7 @@ def _engineer_div_features(data, anchor_date):
     return divs, div_predictors, next_dividend_date, today_div
 
 def _train_div_classifier(train_div, test_div, div_predictors):
-    # Default to 50% confidence if history is completely flat
+    # Can't train a classifier when every row has the same label — just return neutral confidence
     if train_div["Div_Target"].nunique() <= 1:
         div_pred = int(train_div["Div_Target"].iloc[0])
         return div_pred, 0.5
@@ -287,6 +292,7 @@ def _train_div_classifier(train_div, test_div, div_predictors):
         div_pred = int(cal_div.predict(test_div[div_predictors])[0])
         div_conf_up = float(cal_div.predict_proba(test_div[div_predictors])[0, 1])
     except ValueError:
+        # Isotonic calibration needs at least 2 classes per fold; fall back to uncalibrated RF if splits are too small
         div_clf = RandomForestClassifier(n_estimators=100, min_samples_split=2, random_state=1, n_jobs=1)
         div_clf.fit(train_div[div_predictors], train_div["Div_Target"])
         div_pred = int(div_clf.predict(test_div[div_predictors])[0])
@@ -299,6 +305,7 @@ def _train_div_classifier(train_div, test_div, div_predictors):
     return div_pred, div_conf_up
 
 def _train_div_regressor(train_div, test_div, div_predictors, div_pred, today_div):
+    """Trains a basic RF regressor on dividend history and nudges the output to stay consistent with the classifier's direction."""
     div_reg = RandomForestRegressor(n_estimators=100, min_samples_split=2, random_state=1, n_jobs=1)
     div_reg.fit(train_div[div_predictors], train_div["Next_Dividend"])
     forecasted_div = float(div_reg.predict(test_div[div_predictors])[0])
@@ -310,6 +317,7 @@ def _train_div_regressor(train_div, test_div, div_predictors, div_pred, today_di
     return round(forecasted_div, 2)
 
 def _forecast_div_long_term(divs, div_predictors, test_div, today_div, forecasted_div, next_dividend_date, avg_days_between, div_window):
+    """Forecasts the next 4 dividend cycles, training a separate regressor per cycle and widening the CI with sqrt(cycle)."""
     payout_vol = divs["Dividends"].pct_change().std()
 
     div_future_dates  = [next_dividend_date.strftime("%Y-%m-%d")]
@@ -390,7 +398,7 @@ def run_real_time_model(ticker, price_window=1000, div_window=20):
     if divs is not None:
         avg_days_between = divs.index.to_series().diff().mean().days
         if pd.isna(avg_days_between) or avg_days_between <= 0:
-            avg_days_between = 90
+            avg_days_between = 90  # Reasonable quarterly fallback for sparse dividend histories
             
         train_div = divs.iloc[-(div_window + 1):-1]
         test_div = divs.iloc[-1:].copy()

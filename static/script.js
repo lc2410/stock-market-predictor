@@ -12,42 +12,42 @@ document.addEventListener('DOMContentLoaded', () => {
   let priceChartInstance = null;
   let navChartInstance = null;
   let dividendChartInstance = null;
-  
-  // Track the latest fetched data globally so we can re-render charts cleanly when the theme changes
+
+  // Store fetched payload to allow seamless theme toggling without recalling the API
   window.lastFetchedData = null;
 
-  // --- Theme Toggle Logic ---
+  // --- Theme Controller ---
   const themeToggleBtn = document.getElementById('themeToggle');
-  const icon = themeToggleBtn.querySelector('.theme-icon');
+  const themeIcon = themeToggleBtn.querySelector('.theme-icon');
   const themeLabel = themeToggleBtn.querySelector('.theme-label');
   let currentTheme = localStorage.getItem('theme') || 'light';
-  
+
   document.documentElement.setAttribute('data-theme', currentTheme);
-  icon.textContent = currentTheme === 'light' ? '🌙' : '☀️';
+  themeIcon.textContent = currentTheme === 'light' ? '🌙' : '☀️';
   themeLabel.textContent = currentTheme === 'light' ? 'Dark' : 'Light';
 
   themeToggleBtn.addEventListener('click', () => {
-      currentTheme = currentTheme === 'light' ? 'dark' : 'light';
-      document.documentElement.setAttribute('data-theme', currentTheme);
-      localStorage.setItem('theme', currentTheme);
-      icon.textContent = currentTheme === 'light' ? '🌙' : '☀️';
-      themeLabel.textContent = currentTheme === 'light' ? 'Dark' : 'Light';
-      
-      // If we already have data on screen, instantly redraw the charts to pick up the new CSS colors
-      if (window.lastFetchedData && window.lastFetchedData.Chart_History) {
-          renderCharts(window.lastFetchedData);
-      }
+    currentTheme = currentTheme === 'light' ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', currentTheme);
+    localStorage.setItem('theme', currentTheme);
+    themeIcon.textContent = currentTheme === 'light' ? '🌙' : '☀️';
+    themeLabel.textContent = currentTheme === 'light' ? 'Dark' : 'Light';
+
+    // Re-render chart to inject new CSS variables
+    if (window.lastFetchedData && window.lastFetchedData.Chart_History) {
+      renderCharts(window.lastFetchedData);
+    }
   });
 
-  // --- Smart Search Logic ---
+  // --- Search & Autocomplete Controller ---
   let debounceTimer;
-  let isSearching = false; 
-  let latestSearchId = 0;  
+  let isSearching = false;
+  let latestSearchId = 0;
 
   tickerInput.addEventListener('input', (e) => {
     const query = e.target.value.trim();
-    const currentSearchId = ++latestSearchId; 
-    
+    const currentSearchId = ++latestSearchId;
+
     clearSearchBtn.style.display = query.length > 0 ? 'block' : 'none';
 
     clearTimeout(debounceTimer);
@@ -55,26 +55,32 @@ document.addEventListener('DOMContentLoaded', () => {
       autocompleteResults.innerHTML = '';
       return;
     }
-    
+
     debounceTimer = setTimeout(async () => {
       try {
         const res = await fetch(`/search/${query}`);
         const data = await res.json();
-        
+
+        // Prevent race conditions if the user typed during the fetch
         if (isSearching || currentSearchId !== latestSearchId) return;
-        
+
         if (data.length > 0) {
-          autocompleteResults.innerHTML = data.map(item => `
+          autocompleteResults.innerHTML = data
+            .map(
+              (item) => `
             <div class="autocomplete-item" data-symbol="${item.symbol}">
               <span class="ac-sym">${item.symbol}</span>
               <span class="ac-name">${item.name || ''}</span>
             </div>
-          `).join('');
+          `,
+            )
+            .join('');
         } else {
-          autocompleteResults.innerHTML = '<div class="autocomplete-item" style="color: #999;">No results found</div>';
+          autocompleteResults.innerHTML =
+            '<div class="autocomplete-item" style="color: #999;">No results found</div>';
         }
       } catch (err) {
-        console.error("Search failed:", err);
+        console.error('Search failed:', err);
       }
     }, 300);
   });
@@ -83,12 +89,12 @@ document.addEventListener('DOMContentLoaded', () => {
     tickerInput.value = '';
     clearSearchBtn.style.display = 'none';
     autocompleteResults.innerHTML = '';
-    latestSearchId++; 
-    
+    latestSearchId++;
+
     if (priceChartInstance) priceChartInstance.destroy();
     if (navChartInstance) navChartInstance.destroy();
     if (dividendChartInstance) dividendChartInstance.destroy();
-    
+
     clearMessages();
     window.lastFetchedData = null;
     tickerInput.focus();
@@ -104,7 +110,11 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   document.addEventListener('click', (e) => {
-    if (e.target !== tickerInput && !autocompleteResults.contains(e.target) && e.target !== clearSearchBtn) {
+    if (
+      e.target !== tickerInput &&
+      !autocompleteResults.contains(e.target) &&
+      e.target !== clearSearchBtn
+    ) {
       autocompleteResults.innerHTML = '';
     }
   });
@@ -113,53 +123,62 @@ document.addEventListener('DOMContentLoaded', () => {
     tickerInput.disabled = isLoading;
     predictBtn.disabled = isLoading;
     predictBtn.style.cursor = isLoading ? 'not-allowed' : '';
-    clearSearchBtn.style.display = isLoading ? 'none' : (tickerInput.value.length > 0 ? 'block' : 'none');
+    clearSearchBtn.style.display = isLoading
+      ? 'none'
+      : tickerInput.value.length > 0
+        ? 'block'
+        : 'none';
     loader.style.display = isLoading ? 'block' : 'none';
   }
 
+  // --- API Invocation ---
   const handlePrediction = async () => {
     const ticker = tickerInput.value.trim().toUpperCase();
     if (!ticker) {
       showError('Please enter a ticker symbol.');
       return;
     }
-    
+
     clearTimeout(debounceTimer);
-    latestSearchId++; 
+    latestSearchId++;
     autocompleteResults.innerHTML = '';
     isSearching = true;
 
     clearMessages();
     setLoadingState(true);
-    
+
     try {
       const response = await fetch(`/predict/${ticker}`);
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'An unknown error occurred.');
-      
-      window.lastFetchedData = data; // Save for theme toggling
+      if (!response.ok)
+        throw new Error(data.error || 'An unknown error occurred.');
+
+      window.lastFetchedData = data;
       displayResult(data);
     } catch (error) {
       showError(error.message);
     } finally {
       setLoadingState(false);
-      isSearching = false; 
+      isSearching = false;
     }
   };
 
   predictBtn.addEventListener('click', handlePrediction);
   tickerInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
-        e.preventDefault(); 
-        handlePrediction();
+      e.preventDefault();
+      handlePrediction();
     }
   });
 
+  // --- DOM Rendering ---
   function displayResult(data) {
     const hasDividends = data.Next_Dividend_Date !== 'N/A';
     const divExt = data.Div_Extended_Forecasts || {};
 
-    const divLongTermRows = hasDividends && Object.keys(divExt).length ? `
+    const divLongTermRows =
+      hasDividends && Object.keys(divExt).length
+        ? `
       <h3 class="subsection-heading">Long-Term Projections</h3>
       <div class="dashboard-grid">
         <div class="metric-card">
@@ -174,12 +193,15 @@ document.addEventListener('DOMContentLoaded', () => {
           <span class="metric-label">4th Payout (${divExt['4_Payouts']?.Date ?? 'N/A'})</span>
           <span class="metric-value">${divExt['4_Payouts'] ? '$' + divExt['4_Payouts'].Amount.toFixed(2) : 'N/A'}</span>
         </div>
-      </div>` : '';
+      </div>`
+        : '';
 
-    const dividendSection = !hasDividends ? `
+    const dividendSection = !hasDividends
+      ? `
       <div class="metric-card" style="grid-column: 1 / -1; text-align: center; color: var(--text-muted); font-style: italic;">
         This company does not currently pay dividends to its stakeholders.
-      </div>` : `
+      </div>`
+      : `
       <div class="dashboard-grid">
         <div class="metric-card">
           <span class="metric-label">Next Dividend Date</span>
@@ -223,7 +245,9 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
-    const divTableSection = hasDividends && divTableRows ? `
+    const divTableSection =
+      hasDividends && divTableRows
+        ? `
          <h3 class="subsection-heading">Recent Dividend Payouts (Last 12)</h3>
          <div class="table-wrapper">
            <table class="glass-table">
@@ -233,7 +257,8 @@ document.addEventListener('DOMContentLoaded', () => {
              </tr></thead>
              <tbody>${divTableRows}</tbody>
            </table>
-         </div>` : '';
+         </div>`
+        : '';
 
     resultContainer.innerHTML = `
       <h2 class="section-heading" style="margin-top: 10px;">${data.Company_Name} <span style="color:var(--text-muted);font-weight:600;">(${data.Ticker})</span></h2>
@@ -337,6 +362,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (data.Chart_History) setTimeout(() => renderCharts(data), 150);
   }
 
+  // --- Chart Setup & Lifecycle ---
   function renderCharts(data) {
     const histData = data.Chart_History;
 
@@ -344,49 +370,63 @@ document.addEventListener('DOMContentLoaded', () => {
     if (navChartInstance) navChartInstance.destroy();
     if (dividendChartInstance) dividendChartInstance.destroy();
 
-    // Dynamically Fetch CSS Variables to apply to Chart.js
     const style = getComputedStyle(document.body);
     const brandRGB = style.getPropertyValue('--brand-rgb').trim();
-    const chartHistory = style.getPropertyValue('--chart-history').trim();
-    const chartGrid = style.getPropertyValue('--chart-grid').trim();
-    const textMain = style.getPropertyValue('--text-main').trim();
+    const chartHistoryColor = style.getPropertyValue('--chart-history').trim();
+    const chartGridColor = style.getPropertyValue('--chart-grid').trim();
+    const textMainColor = style.getPropertyValue('--text-main').trim();
 
     const historyMap = new Map();
     histData.dates.forEach((d, i) => historyMap.set(d, histData.prices[i]));
-    
-    const historyCoords = Array.from(historyMap, ([x, y]) => ({ x, y }))
-                               .sort((a, b) => new Date(a.x) - new Date(b.x));
+
+    const historyCoords = Array.from(historyMap, ([x, y]) => ({ x, y })).sort(
+      (a, b) => new Date(a.x) - new Date(b.x),
+    );
 
     const anchorDate = historyCoords[historyCoords.length - 1].x;
     const anchorPrice = historyCoords[historyCoords.length - 1].y;
 
-    const projectedToday = data.Train_Fit_Prices && data.Train_Fit_Prices.length > 0
+    const projectedToday =
+      data.Train_Fit_Prices && data.Train_Fit_Prices.length > 0
         ? data.Train_Fit_Prices[data.Train_Fit_Prices.length - 1]
         : anchorPrice;
 
     const unifiedMap = new Map();
     if (data.Train_Fit_Dates) {
-        data.Train_Fit_Dates.forEach((d, i) => {
-            if (d >= historyCoords[0].x && d !== anchorDate) {
-                unifiedMap.set(d, data.Train_Fit_Prices[i]);
-            }
-        });
+      data.Train_Fit_Dates.forEach((d, i) => {
+        if (d >= historyCoords[0].x && d !== anchorDate) {
+          unifiedMap.set(d, data.Train_Fit_Prices[i]);
+        }
+      });
     }
+
     unifiedMap.set(anchorDate, projectedToday);
-    data.Chart_Future_Dates.forEach((d, i) => unifiedMap.set(d, data.Chart_Future_Prices[i]));
-    
-    const unifiedLineCoords = Array.from(unifiedMap, ([x, y]) => ({ x, y }))
-                                   .sort((a, b) => new Date(a.x) - new Date(b.x));
+    data.Chart_Future_Dates.forEach((d, i) =>
+      unifiedMap.set(d, data.Chart_Future_Prices[i]),
+    );
+
+    const unifiedLineCoords = Array.from(unifiedMap, ([x, y]) => ({
+      x,
+      y,
+    })).sort((a, b) => new Date(a.x) - new Date(b.x));
 
     const upperMap = new Map();
     upperMap.set(anchorDate, projectedToday);
-    data.Chart_Future_Dates.forEach((d, i) => upperMap.set(d, data.Chart_Future_Upper[i]));
-    const upperCoords = Array.from(upperMap, ([x, y]) => ({ x, y })).sort((a, b) => new Date(a.x) - new Date(b.x));
+    data.Chart_Future_Dates.forEach((d, i) =>
+      upperMap.set(d, data.Chart_Future_Upper[i]),
+    );
+    const upperCoords = Array.from(upperMap, ([x, y]) => ({ x, y })).sort(
+      (a, b) => new Date(a.x) - new Date(b.x),
+    );
 
     const lowerMap = new Map();
     lowerMap.set(anchorDate, projectedToday);
-    data.Chart_Future_Dates.forEach((d, i) => lowerMap.set(d, data.Chart_Future_Lower[i]));
-    const lowerCoords = Array.from(lowerMap, ([x, y]) => ({ x, y })).sort((a, b) => new Date(a.x) - new Date(b.x));
+    data.Chart_Future_Dates.forEach((d, i) =>
+      lowerMap.set(d, data.Chart_Future_Lower[i]),
+    );
+    const lowerCoords = Array.from(lowerMap, ([x, y]) => ({ x, y })).sort(
+      (a, b) => new Date(a.x) - new Date(b.x),
+    );
 
     const allDates = [...histData.dates, ...data.Chart_Future_Dates];
     const minTs = new Date(allDates[0]).getTime();
@@ -403,7 +443,7 @@ document.addEventListener('DOMContentLoaded', () => {
             label: 'Historical Stock Prices',
             data: historyCoords,
             borderColor: 'rgba(0,0,0,0)',
-            backgroundColor: chartHistory,
+            backgroundColor: chartHistoryColor,
             pointRadius: 2,
             pointHoverRadius: 4,
             showLine: false,
@@ -448,7 +488,7 @@ document.addEventListener('DOMContentLoaded', () => {
         ],
       },
       options: {
-        color: textMain, // Dynamically updates axis text color
+        color: textMainColor,
         responsive: true,
         maintainAspectRatio: false,
         animation: false,
@@ -458,27 +498,52 @@ document.addEventListener('DOMContentLoaded', () => {
             type: 'time',
             min: viewMin,
             max: viewMax,
-            time: { unit: 'month', displayFormats: { month: 'MMM yyyy' }, tooltipFormat: 'MMM d, yyyy' },
-            grid: { color: chartGrid },
-            ticks: { color: textMain, maxRotation: 45, minRotation: 45, font: { size: 11 } },
+            time: {
+              unit: 'month',
+              displayFormats: { month: 'MMM yyyy' },
+              tooltipFormat: 'MMM d, yyyy',
+            },
+            grid: { color: chartGridColor },
+            ticks: {
+              color: textMainColor,
+              maxRotation: 45,
+              minRotation: 45,
+              font: { size: 11 },
+            },
           },
           y: {
             min: 0,
-            grid: { color: chartGrid },
-            ticks: { color: textMain, font: { size: 11 }, callback: (v) => `$${v.toLocaleString()}` },
+            grid: { color: chartGridColor },
+            ticks: {
+              color: textMainColor,
+              font: { size: 11 },
+              callback: (v) => `$${v.toLocaleString()}`,
+            },
           },
         },
         plugins: {
-          title: { display: true, text: 'Stock Price History & Forecast with 95% Confidence Interval', color: textMain, font: { size: 13, weight: '600' }, padding: { bottom: 16 } },
+          title: {
+            display: true,
+            text: 'Stock Price History & Forecast with 95% Confidence Interval',
+            color: textMainColor,
+            font: { size: 13, weight: '600' },
+            padding: { bottom: 16 },
+          },
           legend: {
-            labels: { color: textMain, filter: (item) => !item.text.includes('Bound'), usePointStyle: false, sort: (a, b) => (a.text === 'Historical Stock Prices' ? -1 : 1) },
+            labels: {
+              color: textMainColor,
+              filter: (item) => !item.text.includes('Bound'),
+              usePointStyle: false,
+              sort: (a, b) => (a.text === 'Historical Stock Prices' ? -1 : 1),
+            },
             onClick: function (e, legendItem, legend) {
               const chart = legend.chart;
               const meta = chart.getDatasetMeta(legendItem.datasetIndex);
               meta.hidden = !meta.hidden;
               if (legendItem.text === 'Projected Stock Prices') {
                 chart.data.datasets.forEach((ds, i) => {
-                  if (ds.label === 'Upper Bound' || ds.label === 'Lower Bound') chart.getDatasetMeta(i).hidden = meta.hidden;
+                  if (ds.label === 'Upper Bound' || ds.label === 'Lower Bound')
+                    chart.getDatasetMeta(i).hidden = meta.hidden;
                 });
               }
               chart.update();
@@ -487,8 +552,20 @@ document.addEventListener('DOMContentLoaded', () => {
           annotation: {
             annotations: {
               todayLine: {
-                type: 'line', xMin: anchorDate, xMax: anchorDate, borderColor: textMain, borderWidth: 1.5, borderDash: [5, 4],
-                label: { display: true, content: 'Today', position: 'start', font: { size: 10 }, backgroundColor: textMain, color: currentTheme === 'light' ? '#ffffff' : '#000000' },
+                type: 'line',
+                xMin: anchorDate,
+                xMax: anchorDate,
+                borderColor: textMainColor,
+                borderWidth: 1.5,
+                borderDash: [5, 4],
+                label: {
+                  display: true,
+                  content: 'Today',
+                  position: 'start',
+                  font: { size: 10 },
+                  backgroundColor: textMainColor,
+                  color: currentTheme === 'light' ? '#ffffff' : '#000000',
+                },
               },
             },
           },
@@ -500,7 +577,8 @@ document.addEventListener('DOMContentLoaded', () => {
               if (label.includes('Bound')) return false;
               if (pointDate !== hoverDate) return false;
               for (let i = 0; i < currentIndex; i++) {
-                if (tooltipItems[i].datasetIndex === tooltipItem.datasetIndex) return false;
+                if (tooltipItems[i].datasetIndex === tooltipItem.datasetIndex)
+                  return false;
               }
               return true;
             },
@@ -510,7 +588,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (ctx.dataset.label !== 'Projected Stock Prices') {
                   return `${ctx.dataset.label}: $${price}`;
                 }
-                // Look up whether this date falls within the forecast window and attach the CI range
                 const hoverDate = ctx.raw.x;
                 const ciIndex = data.Chart_Future_Dates.indexOf(hoverDate);
                 if (ciIndex !== -1) {
@@ -534,11 +611,45 @@ document.addEventListener('DOMContentLoaded', () => {
       type: 'line',
       data: {
         datasets: [
-          { data: historyCoords, borderColor: 'rgba(0,0,0,0)', backgroundColor: chartHistory, pointRadius: 1, showLine: false, order: 1 },
-          { data: unifiedLineCoords, borderColor: `rgba(${brandRGB}, 1)`, backgroundColor: 'transparent', borderWidth: 1.5, pointRadius: 0, fill: false, tension: 0.2, order: 0 },
+          {
+            data: historyCoords,
+            borderColor: 'rgba(0,0,0,0)',
+            backgroundColor: chartHistoryColor,
+            pointRadius: 1,
+            showLine: false,
+            order: 1,
+          },
+          {
+            data: unifiedLineCoords,
+            borderColor: `rgba(${brandRGB}, 1)`,
+            backgroundColor: 'transparent',
+            borderWidth: 1.5,
+            pointRadius: 0,
+            fill: false,
+            tension: 0.2,
+            order: 0,
+          },
         ],
       },
-      options: { responsive: true, maintainAspectRatio: false, animation: false, scales: { x: { type: 'time', time: { unit: 'year' }, grid: { display: false }, ticks: { display: false } }, y: { display: false, min: 0 } }, plugins: { legend: { display: false }, tooltip: { enabled: false } } },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        layout: {
+            padding: { top: 10, bottom: 10 }
+        },
+        scales: {
+          x: {
+            type: 'time',
+            time: { unit: 'year' },
+            grid: { display: false },
+            border: { display: false },
+            ticks: { display: false },
+          },
+          y: { display: false },
+        },
+        plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      },
     });
 
     const navWrapper = document.getElementById('navWrapper');
@@ -553,14 +664,16 @@ document.addEventListener('DOMContentLoaded', () => {
     let dragStartMin = 0;
     let dragStartMax = 0;
 
-    function tsToFrac(ts) { return (ts - minTs) / (maxTs - minTs); }
+    function tsToFrac(ts) {
+      return (ts - minTs) / (maxTs - minTs);
+    }
 
     function updateOverlays() {
-      const W = navWrapper.getBoundingClientRect().width;
-      const leftPx = tsToFrac(viewMin) * W;
-      const rightPx = tsToFrac(viewMax) * W;
+      const wrapperWidth = navWrapper.getBoundingClientRect().width;
+      const leftPx = tsToFrac(viewMin) * wrapperWidth;
+      const rightPx = tsToFrac(viewMax) * wrapperWidth;
       navLeft.style.width = `${leftPx}px`;
-      navRight.style.width = `${W - rightPx}px`;
+      navRight.style.width = `${wrapperWidth - rightPx}px`;
       handleL.style.left = `${leftPx - 7}px`;
       handleR.style.left = `${rightPx - 7}px`;
     }
@@ -571,7 +684,6 @@ document.addEventListener('DOMContentLoaded', () => {
       priceChartInstance.update('none');
     }
 
-    // Add and Remove custom active classes instead of hardcoding RGBs on Drag
     function onDragStart(e, mode) {
       dragMode = mode;
       dragStartX = e.clientX ?? e.touches[0].clientX;
@@ -585,26 +697,45 @@ document.addEventListener('DOMContentLoaded', () => {
 
     handleL.addEventListener('mousedown', (e) => onDragStart(e, 'left'));
     handleR.addEventListener('mousedown', (e) => onDragStart(e, 'right'));
-    navWrapper.addEventListener('mousedown', (e) => { if (e.target !== handleL && e.target !== handleR) onDragStart(e, 'pan'); });
+    navWrapper.addEventListener('mousedown', (e) => {
+      if (e.target !== handleL && e.target !== handleR) onDragStart(e, 'pan');
+    });
 
     function onDragMove(e) {
       if (!dragMode) return;
       const clientX = e.clientX ?? e.touches[0].clientX;
-      const W = navWrapper.getBoundingClientRect().width;
-      const dxTs = ((clientX - dragStartX) / W) * (maxTs - minTs);
+      const wrapperWidth = navWrapper.getBoundingClientRect().width;
+      const deltaTs = ((clientX - dragStartX) / wrapperWidth) * (maxTs - minTs);
       const span = dragStartMax - dragStartMin;
 
       if (dragMode === 'pan') {
-        let newMin = dragStartMin + dxTs; let newMax = dragStartMax + dxTs;
-        if (newMin < minTs) { newMin = minTs; newMax = minTs + span; }
-        if (newMax > maxTs) { newMax = maxTs; newMin = maxTs - span; }
-        viewMin = newMin; viewMax = newMax;
+        let newMin = dragStartMin + deltaTs;
+        let newMax = dragStartMax + deltaTs;
+        if (newMin < minTs) {
+          newMin = minTs;
+          newMax = minTs + span;
+        }
+        if (newMax > maxTs) {
+          newMax = maxTs;
+          newMin = maxTs - span;
+        }
+        viewMin = newMin;
+        viewMax = newMax;
       } else if (dragMode === 'left') {
-        viewMin = Math.max(Math.min(dragStartMin + dxTs, viewMax - MIN_WINDOW), minTs);
+        viewMin = Math.max(
+          Math.min(dragStartMin + deltaTs, viewMax - MIN_WINDOW),
+          minTs,
+        );
       } else if (dragMode === 'right') {
-        viewMax = Math.min(Math.max(dragStartMax + dxTs, viewMin + MIN_WINDOW), maxTs);
+        viewMax = Math.min(
+          Math.max(dragStartMax + deltaTs, viewMin + MIN_WINDOW),
+          maxTs,
+        );
       }
-      updateOverlays(); applyViewToMainChart(); e.preventDefault();
+
+      updateOverlays();
+      applyViewToMainChart();
+      e.preventDefault();
     }
 
     function onDragEnd() {
@@ -614,11 +745,12 @@ document.addEventListener('DOMContentLoaded', () => {
       dragMode = null;
     }
 
-    // Responsive window observer cleanup
+    // Bind resize observer so navigator maintains alignment
     if (window.navListeners) {
       document.removeEventListener('mousemove', window.navListeners.onDragMove);
       document.removeEventListener('mouseup', window.navListeners.onDragEnd);
-      if (window.navListeners.resizeObserver) window.navListeners.resizeObserver.disconnect();
+      if (window.navListeners.resizeObserver)
+        window.navListeners.resizeObserver.disconnect();
     }
 
     const resizeObserver = new ResizeObserver(() => {
@@ -634,67 +766,161 @@ document.addEventListener('DOMContentLoaded', () => {
     document.addEventListener('mousemove', onDragMove);
     document.addEventListener('mouseup', onDragEnd);
     resizeObserver.observe(navWrapper);
-    
+
     document.getElementById('navResetBtn').addEventListener('click', () => {
-      viewMin = minTs; viewMax = maxTs;
-      updateOverlays(); applyViewToMainChart();
+      viewMin = minTs;
+      viewMax = maxTs;
+      updateOverlays();
+      applyViewToMainChart();
     });
 
     setTimeout(updateOverlays, 200);
 
-    const noDividend = data.Next_Dividend_Date === 'N/A' || !histData.dividend_dates.length;
+    const noDividend =
+      data.Next_Dividend_Date === 'N/A' || !histData.dividend_dates.length;
     if (noDividend) {
       document.getElementById('dividendChart').style.display = 'none';
       document.getElementById('noDividendOverlay').style.display = 'block';
     } else {
       const divLabelsMap = new Map();
-      histData.dividend_dates.forEach((d, i) => { divLabelsMap.set(d, { amount: histData.dividend_amounts[i], bgColor: chartHistory, upper: null, lower: null, isEst: false }); });
+      histData.dividend_dates.forEach((d, i) => {
+        divLabelsMap.set(d, {
+          amount: histData.dividend_amounts[i],
+          bgColor: chartHistoryColor,
+          upper: null,
+          lower: null,
+          isEst: false,
+        });
+      });
 
       const futureDates = data.Div_Future_Dates || [];
       const futureAmounts = data.Div_Future_Amounts || [];
       const futureUpper = data.Div_Future_Upper || [];
       const futureLower = data.Div_Future_Lower || [];
 
-      futureDates.forEach((d, i) => { divLabelsMap.set(d, { amount: futureAmounts[i], bgColor: `rgba(${brandRGB}, 0.7)`, upper: futureUpper[i], lower: futureLower[i], isEst: true }); });
+      futureDates.forEach((d, i) => {
+        divLabelsMap.set(d, {
+          amount: futureAmounts[i],
+          bgColor: `rgba(${brandRGB}, 0.7)`,
+          upper: futureUpper[i],
+          lower: futureLower[i],
+          isEst: true,
+        });
+      });
 
-      const sortedDivKeys = Array.from(divLabelsMap.keys()).sort((a, b) => new Date(a) - new Date(b));
-      const finalDivLabels = []; const finalDivAmounts = []; const finalBgColors = []; const ciUpper = []; const ciLower = [];
+      const sortedDivKeys = Array.from(divLabelsMap.keys()).sort(
+        (a, b) => new Date(a) - new Date(b),
+      );
+      const finalDivLabels = [];
+      const finalDivAmounts = [];
+      const finalBgColors = [];
+      const ciUpper = [];
+      const ciLower = [];
 
-      sortedDivKeys.forEach(dateKey => {
-          const entry = divLabelsMap.get(dateKey);
-          finalDivLabels.push(entry.isEst ? `${dateKey} (Est.)` : dateKey);
-          finalDivAmounts.push(entry.amount); finalBgColors.push(entry.bgColor); ciUpper.push(entry.upper); ciLower.push(entry.lower);
+      sortedDivKeys.forEach((dateKey) => {
+        const entry = divLabelsMap.get(dateKey);
+        finalDivLabels.push(entry.isEst ? `${dateKey} (Est.)` : dateKey);
+        finalDivAmounts.push(entry.amount);
+        finalBgColors.push(entry.bgColor);
+        ciUpper.push(entry.upper);
+        ciLower.push(entry.lower);
       });
 
       const ctxDiv = document.getElementById('dividendChart').getContext('2d');
       dividendChartInstance = new Chart(ctxDiv, {
         type: 'bar',
-        data: { labels: finalDivLabels, datasets: [{ label: 'Dividend Payout ($)', data: finalDivAmounts, backgroundColor: finalBgColors, borderRadius: 5 }] },
+        data: {
+          labels: finalDivLabels,
+          datasets: [
+            {
+              label: 'Dividend Payout ($)',
+              data: finalDivAmounts,
+              backgroundColor: finalBgColors,
+              borderRadius: 5,
+            },
+          ],
+        },
         options: {
-          color: textMain,
-          responsive: true, maintainAspectRatio: false,
+          color: textMainColor,
+          responsive: true,
+          maintainAspectRatio: false,
           scales: {
-            x: { grid: { display: false }, ticks: { color: textMain, maxRotation: 45, minRotation: 45, font: { size: 10 } } },
-            y: { grid: { color: chartGrid }, ticks: { color: textMain, font: { size: 11 }, callback: (v) => `$${v.toFixed(2)}` } },
+            x: {
+              grid: { display: false },
+              ticks: {
+                color: textMainColor,
+                maxRotation: 45,
+                minRotation: 45,
+                font: { size: 10 },
+              },
+            },
+            y: {
+              grid: { color: chartGridColor },
+              ticks: {
+                color: textMainColor,
+                font: { size: 11 },
+                callback: (v) => `$${v.toFixed(2)}`,
+              },
+            },
           },
           plugins: {
-            title: { display: true, text: 'Dividend History & Forecast with 95% Confidence Interval', color: textMain, font: { size: 14, weight: '600' }, padding: { bottom: 16 } },
-            legend: { display: true, labels: { color: textMain, usePointStyle: true, generateLabels: () => {
-                  const items = [{ text: 'Historical Dividend Payout', fillStyle: chartHistory, strokeStyle: 'transparent', fontColor: textMain }];
-                  if (futureDates.length) items.push({ text: 'Projected Dividend Payout', fillStyle: `rgba(${brandRGB}, 0.7)`, strokeStyle: 'transparent', fontColor: textMain });
+            title: {
+              display: true,
+              text: 'Dividend History & Forecast with 95% Confidence Interval',
+              color: textMainColor,
+              font: { size: 14, weight: '600' },
+              padding: { bottom: 16 },
+            },
+            legend: {
+              display: true,
+              labels: {
+                color: textMainColor,
+                usePointStyle: true,
+                generateLabels: () => {
+                  const items = [
+                    {
+                      text: 'Historical Dividend Payout',
+                      fillStyle: chartHistoryColor,
+                      strokeStyle: 'transparent',
+                      fontColor: textMainColor,
+                    },
+                  ];
+                  if (futureDates.length)
+                    items.push({
+                      text: 'Projected Dividend Payout',
+                      fillStyle: `rgba(${brandRGB}, 0.7)`,
+                      strokeStyle: 'transparent',
+                      fontColor: textMainColor,
+                    });
                   return items;
-            }}},
-            tooltip: { callbacks: { label: (ctx) => {
-                  const amount = ctx.parsed.y; const i = ctx.dataIndex;
-                  if (ciUpper[i] !== null && ciUpper[i] !== undefined) return [ `Projected Dividend Payout: $${amount.toFixed(2)}`, `95% CI: $${ciLower[i].toFixed(2)} – $${ciUpper[i].toFixed(2)}` ];
+                },
+              },
+            },
+            tooltip: {
+              callbacks: {
+                label: (ctx) => {
+                  const amount = ctx.parsed.y;
+                  const i = ctx.dataIndex;
+                  if (ciUpper[i] !== null && ciUpper[i] !== undefined)
+                    return [
+                      `Projected Dividend Payout: $${amount.toFixed(2)}`,
+                      `95% CI: $${ciLower[i].toFixed(2)} – $${ciUpper[i].toFixed(2)}`,
+                    ];
                   return `Historical Dividend Payout: $${amount.toFixed(2)}`;
-            }}},
+                },
+              },
+            },
           },
         },
       });
     }
   }
 
-  function showError(message) { errorContainer.textContent = `Error: ${message}`; }
-  function clearMessages() { resultContainer.innerHTML = ''; errorContainer.textContent = ''; }
+  function showError(message) {
+    errorContainer.textContent = `Error: ${message}`;
+  }
+  function clearMessages() {
+    resultContainer.innerHTML = '';
+    errorContainer.textContent = '';
+  }
 });
