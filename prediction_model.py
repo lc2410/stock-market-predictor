@@ -415,9 +415,16 @@ def run_real_time_model(ticker, price_window=1000, div_window=20):
         else "N/A"
     )
 
+    try:
+        info = yf.Ticker(ticker).info
+        company_name = info.get("longName") or info.get("shortName") or ticker
+    except Exception:
+        company_name = ticker
+
     return pd.DataFrame({
         "Next_Trading_Day":        [next_trading_day_str],
         "Ticker":                  [ticker],
+        "Company_Name":            [company_name],
         "Price_Predicted":         ["Up" if direction == 1 else "Down"],
         "Price_Confidence (%)":    [round(price_conf * 100, 2)],
         "Forecasted_Close":        [forecasted_close],

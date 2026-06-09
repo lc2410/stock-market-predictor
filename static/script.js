@@ -12,7 +12,34 @@ document.addEventListener('DOMContentLoaded', () => {
   let priceChartInstance = null;
   let navChartInstance = null;
   let dividendChartInstance = null;
+  
+  // Track the latest fetched data globally so we can re-render charts cleanly when the theme changes
+  window.lastFetchedData = null;
 
+  // --- Theme Toggle Logic ---
+  const themeToggleBtn = document.getElementById('themeToggle');
+  const icon = themeToggleBtn.querySelector('.theme-icon');
+  const themeLabel = themeToggleBtn.querySelector('.theme-label');
+  let currentTheme = localStorage.getItem('theme') || 'light';
+  
+  document.documentElement.setAttribute('data-theme', currentTheme);
+  icon.textContent = currentTheme === 'light' ? '🌙' : '☀️';
+  themeLabel.textContent = currentTheme === 'light' ? 'Dark' : 'Light';
+
+  themeToggleBtn.addEventListener('click', () => {
+      currentTheme = currentTheme === 'light' ? 'dark' : 'light';
+      document.documentElement.setAttribute('data-theme', currentTheme);
+      localStorage.setItem('theme', currentTheme);
+      icon.textContent = currentTheme === 'light' ? '🌙' : '☀️';
+      themeLabel.textContent = currentTheme === 'light' ? 'Dark' : 'Light';
+      
+      // If we already have data on screen, instantly redraw the charts to pick up the new CSS colors
+      if (window.lastFetchedData && window.lastFetchedData.Chart_History) {
+          renderCharts(window.lastFetchedData);
+      }
+  });
+
+  // --- Smart Search Logic ---
   let debounceTimer;
   let isSearching = false; 
   let latestSearchId = 0;  
@@ -63,6 +90,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (dividendChartInstance) dividendChartInstance.destroy();
     
     clearMessages();
+    window.lastFetchedData = null;
     tickerInput.focus();
   });
 
@@ -86,12 +114,7 @@ document.addEventListener('DOMContentLoaded', () => {
     predictBtn.disabled = isLoading;
     predictBtn.style.cursor = isLoading ? 'not-allowed' : '';
     clearSearchBtn.style.display = isLoading ? 'none' : (tickerInput.value.length > 0 ? 'block' : 'none');
-    
-    if (isLoading) {
-        loader.style.display = 'block';
-    } else {
-        loader.style.display = 'none';
-    }
+    loader.style.display = isLoading ? 'block' : 'none';
   }
 
   const handlePrediction = async () => {
@@ -113,6 +136,8 @@ document.addEventListener('DOMContentLoaded', () => {
       const response = await fetch(`/predict/${ticker}`);
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'An unknown error occurred.');
+      
+      window.lastFetchedData = data; // Save for theme toggling
       displayResult(data);
     } catch (error) {
       showError(error.message);
@@ -134,33 +159,45 @@ document.addEventListener('DOMContentLoaded', () => {
     const hasDividends = data.Next_Dividend_Date !== 'N/A';
     const divExt = data.Div_Extended_Forecasts || {};
 
-    const divLongTermRows =
-      hasDividends && Object.keys(divExt).length
-        ? `
-      <div class="separator"></div>
-      <h4 class="grid-subtitle">Long-Term Dividend Projection</h4>
-      <div class="result-item"><strong>2nd Payout (${divExt['2_Payouts']?.Date ?? 'N/A'}):</strong></div>
-      <div class="result-item">${divExt['2_Payouts'] ? '$' + divExt['2_Payouts'].Amount.toFixed(2) : 'N/A'}</div>
-      <div class="result-item"><strong>3rd Payout (${divExt['3_Payouts']?.Date ?? 'N/A'}):</strong></div>
-      <div class="result-item">${divExt['3_Payouts'] ? '$' + divExt['3_Payouts'].Amount.toFixed(2) : 'N/A'}</div>
-      <div class="result-item"><strong>4th Payout (${divExt['4_Payouts']?.Date ?? 'N/A'}):</strong></div>
-      <div class="result-item">${divExt['4_Payouts'] ? '$' + divExt['4_Payouts'].Amount.toFixed(2) : 'N/A'}</div>`
-        : '';
+    const divLongTermRows = hasDividends && Object.keys(divExt).length ? `
+      <h3 class="subsection-heading">Long-Term Projections</h3>
+      <div class="dashboard-grid">
+        <div class="metric-card">
+          <span class="metric-label">2nd Payout (${divExt['2_Payouts']?.Date ?? 'N/A'})</span>
+          <span class="metric-value">${divExt['2_Payouts'] ? '$' + divExt['2_Payouts'].Amount.toFixed(2) : 'N/A'}</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">3rd Payout (${divExt['3_Payouts']?.Date ?? 'N/A'})</span>
+          <span class="metric-value">${divExt['3_Payouts'] ? '$' + divExt['3_Payouts'].Amount.toFixed(2) : 'N/A'}</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">4th Payout (${divExt['4_Payouts']?.Date ?? 'N/A'})</span>
+          <span class="metric-value">${divExt['4_Payouts'] ? '$' + divExt['4_Payouts'].Amount.toFixed(2) : 'N/A'}</span>
+        </div>
+      </div>` : '';
 
-    const dividendSection = !hasDividends
-      ? `
-      <div class="result-item" style="grid-column:1/-1;color:#6b7280;font-style:italic;font-size:14px;padding:6px 0;">
-        This company does not pay dividends to its stakeholders.
-      </div>`
-      : `
-      <div class="result-item"><strong>Next Dividend Date:</strong></div>
-      <div class="result-item">${data.Next_Dividend_Date}</div>
-      <div class="result-item"><strong>Dividend Direction:</strong></div>
-      <div class="result-item ${data.Div_Predicted.toLowerCase()}">${data.Div_Predicted}</div>
-      <div class="result-item"><strong>Dividend Confidence:</strong></div>
-      <div class="result-item">${data['Div_Confidence (%)'] === 'N/A' ? 'N/A' : data['Div_Confidence (%)'] + '%'}</div>
-      <div class="result-item"><strong>Forecasted Dividend:</strong></div>
-      <div class="result-item">${typeof data.Forecasted_Dividend === 'number' ? '$' + data.Forecasted_Dividend.toFixed(2) : 'N/A'}</div>
+    const dividendSection = !hasDividends ? `
+      <div class="metric-card" style="grid-column: 1 / -1; text-align: center; color: var(--text-muted); font-style: italic;">
+        This company does not currently pay dividends to its stakeholders.
+      </div>` : `
+      <div class="dashboard-grid">
+        <div class="metric-card">
+          <span class="metric-label">Next Dividend Date</span>
+          <span class="metric-value">${data.Next_Dividend_Date}</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">Direction</span>
+          <span class="metric-value ${data.Div_Predicted.toLowerCase()}">${data.Div_Predicted}</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">Confidence</span>
+          <span class="metric-value">${data['Div_Confidence (%)'] === 'N/A' ? 'N/A' : data['Div_Confidence (%)'] + '%'}</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">Forecasted Dividend</span>
+          <span class="metric-value">${typeof data.Forecasted_Dividend === 'number' ? '$' + data.Forecasted_Dividend.toFixed(2) : 'N/A'}</span>
+        </div>
+      </div>
       ${divLongTermRows}`;
 
     const histData = data.Chart_History;
@@ -171,145 +208,126 @@ document.addEventListener('DOMContentLoaded', () => {
       for (let i = histData.dates.length - 1; i >= 0; i--) {
         priceTableRows += `
           <tr>
-            <td style="text-align:left;">${histData.dates[i]}</td>
-            <td>$${histData.prices[i].toFixed(2)}</td>
+            <td>${histData.dates[i]}</td>
+            <td><strong style="color:var(--brand-primary);">$${histData.prices[i].toFixed(2)}</strong></td>
           </tr>`;
       }
-
       if (histData.dividend_dates && histData.dividend_dates.length) {
         for (let i = histData.dividend_dates.length - 1; i >= 0; i--) {
           divTableRows += `
             <tr>
-              <td style="text-align:left;">${histData.dividend_dates[i]}</td>
-              <td>$${histData.dividend_amounts[i].toFixed(2)}</td>
+              <td>${histData.dividend_dates[i]}</td>
+              <td><strong style="color:var(--brand-primary);">$${histData.dividend_amounts[i].toFixed(2)}</strong></td>
             </tr>`;
         }
       }
     }
 
-    const divTableSection = hasDividends && divTableRows
-      ? `<div class="separator" style="margin-top:32px;"></div>
-         <h4 class="grid-subtitle" style="text-align:left;">Recent Dividend Payouts (Last 12)</h4>
+    const divTableSection = hasDividends && divTableRows ? `
+         <h3 class="subsection-heading">Recent Dividend Payouts (Last 12)</h3>
          <div class="table-wrapper">
-           <table class="history-table">
+           <table class="glass-table">
              <thead><tr>
-               <th style="text-align:left;">Ex-Dividend Date</th>
+               <th>Ex-Dividend Date</th>
                <th>Amount Per Share</th>
              </tr></thead>
              <tbody>${divTableRows}</tbody>
            </table>
-         </div>`
-      : '';
+         </div>` : '';
 
     resultContainer.innerHTML = `
-      <h3>Forecast for ${data.Ticker}</h3>
+      <h2 class="section-heading" style="margin-top: 10px;">${data.Company_Name} <span style="color:var(--text-muted);font-weight:600;">(${data.Ticker})</span></h2>
 
-      <h2 class="section-heading">Price Forecast</h2>
+      <h3 class="subsection-heading" style="margin-top: 0; padding-bottom: 8px; border-bottom: 2px solid var(--outline-border);">Price Forecast</h3>
 
-      <div class="results-grid">
-        <h4 class="grid-subtitle">Next-Day Price Forecast</h4>
-        <div class="result-item"><strong>Next Trading Day:</strong></div>
-        <div class="result-item">${data.Next_Trading_Day}</div>
-        <div class="result-item"><strong>Price Direction:</strong></div>
-        <div class="result-item ${data.Price_Predicted.toLowerCase()}">${data.Price_Predicted}</div>
-        <div class="result-item"><strong>Price Confidence:</strong></div>
-        <div class="result-item">${data['Price_Confidence (%)']}%</div>
-        <div class="result-item"><strong>Forecasted Close:</strong></div>
-        <div class="result-item">$${data.Forecasted_Close.toFixed(2)}</div>
-
-        <div class="separator"></div>
-        <h4 class="grid-subtitle">Long-Term Price Projection</h4>
-        <div class="result-item"><strong>1 Week (${data.Extended_Forecasts['1_Week'].Date}):</strong></div>
-        <div class="result-item">$${data.Extended_Forecasts['1_Week'].Price.toFixed(2)}</div>
-        <div class="result-item"><strong>1 Month (${data.Extended_Forecasts['1_Month'].Date}):</strong></div>
-        <div class="result-item">$${data.Extended_Forecasts['1_Month'].Price.toFixed(2)}</div>
-        <div class="result-item"><strong>1 Year (${data.Extended_Forecasts['1_Year'].Date}):</strong></div>
-        <div class="result-item">$${data.Extended_Forecasts['1_Year'].Price.toFixed(2)}</div>
+      <h3 class="subsection-heading" style="margin-top: 20px;">Next-Day Metrics</h3>
+      <div class="dashboard-grid">
+        <div class="metric-card">
+          <span class="metric-label">Next Trading Day</span>
+          <span class="metric-value">${data.Next_Trading_Day}</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">Direction</span>
+          <span class="metric-value ${data.Price_Predicted.toLowerCase()}">${data.Price_Predicted}</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">Confidence</span>
+          <span class="metric-value">${data['Price_Confidence (%)']}%</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">Forecasted Close</span>
+          <span class="metric-value">$${data.Forecasted_Close.toFixed(2)}</span>
+        </div>
       </div>
 
-      <div class="separator" style="margin-top:24px;"></div>
-      <h4 class="grid-subtitle" style="text-align:left;">Historical Price Data (Trailing Year)</h4>
+      <h3 class="subsection-heading">Long-Term Projections</h3>
+      <div class="dashboard-grid">
+        <div class="metric-card">
+          <span class="metric-label">1 Week (${data.Extended_Forecasts['1_Week'].Date})</span>
+          <span class="metric-value">$${data.Extended_Forecasts['1_Week'].Price.toFixed(2)}</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">1 Month (${data.Extended_Forecasts['1_Month'].Date})</span>
+          <span class="metric-value">$${data.Extended_Forecasts['1_Month'].Price.toFixed(2)}</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">1 Year (${data.Extended_Forecasts['1_Year'].Date})</span>
+          <span class="metric-value">$${data.Extended_Forecasts['1_Year'].Price.toFixed(2)}</span>
+        </div>
+      </div>
+
+      <div class="chart-box" style="position:relative;margin-top:32px;margin-bottom:16px;">
+        <canvas id="priceChart"></canvas>
+      </div>
+      
+      <div style="position:relative;width:100%;margin-bottom:40px;display:flex;flex-direction:column;gap:12px;">
+        <div style="display:flex;justify-content:flex-end;">
+          <button id="navResetBtn" class="glass-btn-small" title="Reset to full range">↺ Reset Timeline</button>
+        </div>
+        <div id="navWrapper" class="nav-wrapper-custom">
+          <canvas id="navChart" style="width:100%;height:100%;display:block;border-radius:6px;overflow:hidden;"></canvas>
+          <div id="navLeft" class="nav-overlay-custom" style="left:0; border-radius:6px 0 0 6px;"></div>
+          <div id="navRight" class="nav-overlay-custom" style="right:0; border-radius:0 6px 6px 0;"></div>
+          
+          <div id="navHandleL" class="nav-handle-custom">
+            <div style="display:flex;flex-direction:column;gap:3px;pointer-events:none;">
+              <div style="width:2px;height:10px;background:rgba(255,255,255,0.8);border-radius:1px;"></div>
+              <div style="width:2px;height:10px;background:rgba(255,255,255,0.8);border-radius:1px;"></div>
+            </div>
+          </div>
+          <div id="navHandleR" class="nav-handle-custom">
+            <div style="display:flex;flex-direction:column;gap:3px;pointer-events:none;">
+              <div style="width:2px;height:10px;background:rgba(255,255,255,0.8);border-radius:1px;"></div>
+              <div style="width:2px;height:10px;background:rgba(255,255,255,0.8);border-radius:1px;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <h3 class="subsection-heading">Historical Price Data (Trailing Year)</h3>
       <div class="table-wrapper">
-        <table class="history-table">
+        <table class="glass-table">
           <thead><tr>
-            <th style="text-align:left;">Date</th>
+            <th>Trading Date</th>
             <th>Close Price</th>
           </tr></thead>
           <tbody>${priceTableRows}</tbody>
         </table>
       </div>
 
-      <div class="separator" style="margin-top:32px;"></div>
-      
-      <div class="chart-box" style="position:relative;margin-top:24px;margin-bottom:16px;">
-        <canvas id="priceChart"></canvas>
-      </div>
-      <div style="position:relative;width:100%;margin-bottom:40px;display:flex;flex-direction:column;gap:12px;">
-        <div style="display:flex;justify-content:flex-end;">
-          <button id="navResetBtn" style="
-            padding:6px 14px;font-size:12px;font-weight:600;
-            background:#f1f5f9;color:#374151;border:1px solid #d1d5db;
-            border-radius:4px;cursor:pointer;transition:background 0.2s;
-          " onmouseover="this.style.background='#e2e8f0'" onmouseout="this.style.background='#f1f5f9'" title="Reset to full range">↺ Reset</button>
-        </div>
-        <div id="navWrapper" style="
-          position:relative;width:100%;height:72px;
-          background:#f0f2f5;border-radius:6px;
-          border:1px solid #e5e7eb;cursor:ew-resize;user-select:none;overflow:visible;
-        ">
-          <canvas id="navChart" style="width:100%;height:100%;display:block;border-radius:6px;overflow:hidden;"></canvas>
-          <div id="navLeft"  style="position:absolute;top:0;left:0;height:100%;background:rgba(180,190,200,0.45);pointer-events:none;border-radius:6px 0 0 6px;"></div>
-          <div id="navRight" style="position:absolute;top:0;right:0;height:100%;background:rgba(180,190,200,0.45);pointer-events:none;border-radius:0 6px 6px 0;"></div>
-          <div id="navHandleL" style="
-            position:absolute;top:-4px;width:14px;height:calc(100% + 8px);
-            background:rgba(37,99,235,0.75);cursor:ew-resize;
-            border-radius:4px;display:flex;align-items:center;justify-content:center;
-            transition:background 0.15s;box-shadow:0 1px 4px rgba(0,0,0,0.2);
-          ">
-            <div style="display:flex;flex-direction:column;gap:3px;pointer-events:none;">
-              <div style="width:2px;height:10px;background:rgba(255,255,255,0.8);border-radius:1px;"></div>
-              <div style="width:2px;height:10px;background:rgba(255,255,255,0.8);border-radius:1px;"></div>
-              <div style="width:2px;height:10px;background:rgba(255,255,255,0.8);border-radius:1px;"></div>
-            </div>
-          </div>
-          <div id="navHandleR" style="
-            position:absolute;top:-4px;width:14px;height:calc(100% + 8px);
-            background:rgba(37,99,235,0.75);cursor:ew-resize;
-            border-radius:4px;display:flex;align-items:center;justify-content:center;
-            transition:background 0.15s;box-shadow:0 1px 4px rgba(0,0,0,0.2);
-          ">
-            <div style="display:flex;flex-direction:column;gap:3px;pointer-events:none;">
-              <div style="width:2px;height:10px;background:rgba(255,255,255,0.8);border-radius:1px;"></div>
-              <div style="width:2px;height:10px;background:rgba(255,255,255,0.8);border-radius:1px;"></div>
-              <div style="width:2px;height:10px;background:rgba(255,255,255,0.8);border-radius:1px;"></div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <h2 class="section-heading">Dividend Forecast</h2>
-
-      <div class="results-grid">
-        <h4 class="grid-subtitle">Next Dividend Forecast</h4>
-        ${dividendSection}
-      </div>
-
+      <h3 class="subsection-heading" style="margin-top: 56px; padding-bottom: 8px; border-bottom: 2px solid var(--outline-border);">Dividend Forecast</h3>
+      <h3 class="subsection-heading" style="margin-top: 20px;">Next-Day Metrics</h3>
+      ${dividendSection}
       ${divTableSection}
 
-      <div class="separator" style="margin-top:32px;"></div>
       <div style="margin-top:24px;">
         <div class="chart-box" id="dividendChartBox" style="position:relative;">
           <canvas id="dividendChart"></canvas>
-          <div id="noDividendOverlay" style="
-            display:none;position:absolute;inset:0;
-            background:#f3f4f6;border-radius:10px;overflow:hidden;
-          ">
+          <div id="noDividendOverlay" style="display:none;position:absolute;inset:0;background:var(--card-bg);backdrop-filter:blur(4px);border-radius:16px;overflow:hidden;">
             <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;">
-              <span style="
-                font-size:42px;font-weight:800;color:rgba(156,163,175,0.2);
-                letter-spacing:3px;white-space:nowrap;transform:rotate(-25deg);
-                font-family:Inter,sans-serif;user-select:none;
-              ">NO DIVIDEND DATA</span>
+              <span style="font-size:36px;font-weight:800;color:var(--table-border);letter-spacing:2px;white-space:nowrap;transform:rotate(-15deg);font-family:Inter,sans-serif;user-select:none;">
+                NO DIVIDEND DATA
+              </span>
             </div>
           </div>
         </div>
@@ -325,6 +343,13 @@ document.addEventListener('DOMContentLoaded', () => {
     if (priceChartInstance) priceChartInstance.destroy();
     if (navChartInstance) navChartInstance.destroy();
     if (dividendChartInstance) dividendChartInstance.destroy();
+
+    // Dynamically Fetch CSS Variables to apply to Chart.js
+    const style = getComputedStyle(document.body);
+    const brandRGB = style.getPropertyValue('--brand-rgb').trim();
+    const chartHistory = style.getPropertyValue('--chart-history').trim();
+    const chartGrid = style.getPropertyValue('--chart-grid').trim();
+    const textMain = style.getPropertyValue('--text-main').trim();
 
     const historyMap = new Map();
     histData.dates.forEach((d, i) => historyMap.set(d, histData.prices[i]));
@@ -378,7 +403,7 @@ document.addEventListener('DOMContentLoaded', () => {
             label: 'Historical Stock Prices',
             data: historyCoords,
             borderColor: 'rgba(0,0,0,0)',
-            backgroundColor: '#111827',
+            backgroundColor: chartHistory,
             pointRadius: 2,
             pointHoverRadius: 4,
             showLine: false,
@@ -387,8 +412,8 @@ document.addEventListener('DOMContentLoaded', () => {
           {
             label: 'Projected Stock Prices',
             data: unifiedLineCoords,
-            borderColor: '#2563eb',
-            backgroundColor: 'rgba(37,99,235,0.4)',
+            borderColor: `rgba(${brandRGB}, 1)`,
+            backgroundColor: `rgba(${brandRGB}, 0.4)`,
             borderWidth: 2,
             pointRadius: 0,
             pointHoverRadius: 5,
@@ -400,7 +425,7 @@ document.addEventListener('DOMContentLoaded', () => {
             label: 'Upper Bound',
             data: upperCoords,
             borderColor: 'transparent',
-            backgroundColor: 'rgba(37,99,235,0.15)',
+            backgroundColor: `rgba(${brandRGB}, 0.15)`,
             pointRadius: 0,
             pointHoverRadius: 0,
             hitRadius: 0,
@@ -423,6 +448,7 @@ document.addEventListener('DOMContentLoaded', () => {
         ],
       },
       options: {
+        color: textMain, // Dynamically updates axis text color
         responsive: true,
         maintainAspectRatio: false,
         animation: false,
@@ -432,48 +458,27 @@ document.addEventListener('DOMContentLoaded', () => {
             type: 'time',
             min: viewMin,
             max: viewMax,
-            time: {
-              unit: 'month',
-              displayFormats: { month: 'MMM yyyy' },
-              tooltipFormat: 'MMM d, yyyy',
-            },
-            grid: { color: 'rgba(0,0,0,0.05)' },
-            ticks: { maxRotation: 45, minRotation: 45, font: { size: 11 } },
+            time: { unit: 'month', displayFormats: { month: 'MMM yyyy' }, tooltipFormat: 'MMM d, yyyy' },
+            grid: { color: chartGrid },
+            ticks: { color: textMain, maxRotation: 45, minRotation: 45, font: { size: 11 } },
           },
           y: {
             min: 0,
-            grid: { color: 'rgba(0,0,0,0.05)' },
-            ticks: {
-              font: { size: 11 },
-              callback: (v) => `$${v.toLocaleString()}`,
-            },
+            grid: { color: chartGrid },
+            ticks: { color: textMain, font: { size: 11 }, callback: (v) => `$${v.toLocaleString()}` },
           },
         },
         plugins: {
-          title: {
-            display: true,
-            text: 'Stock Price History & Forecast with 95% Confidence Interval',
-            font: { size: 13, weight: '600' },
-            padding: { bottom: 16 },
-          },
+          title: { display: true, text: 'Stock Price History & Forecast with 95% Confidence Interval', color: textMain, font: { size: 13, weight: '600' }, padding: { bottom: 16 } },
           legend: {
-            labels: {
-              filter: (item) => !item.text.includes('Bound'),
-              usePointStyle: false,
-              sort: (a, b) => {
-                if (a.text === 'Historical Stock Prices') return -1;
-                if (b.text === 'Historical Stock Prices') return 1;
-                return 0;
-              }
-            },
+            labels: { color: textMain, filter: (item) => !item.text.includes('Bound'), usePointStyle: false, sort: (a, b) => (a.text === 'Historical Stock Prices' ? -1 : 1) },
             onClick: function (e, legendItem, legend) {
               const chart = legend.chart;
               const meta = chart.getDatasetMeta(legendItem.datasetIndex);
               meta.hidden = !meta.hidden;
               if (legendItem.text === 'Projected Stock Prices') {
                 chart.data.datasets.forEach((ds, i) => {
-                  if (ds.label === 'Upper Bound' || ds.label === 'Lower Bound')
-                    chart.getDatasetMeta(i).hidden = meta.hidden;
+                  if (ds.label === 'Upper Bound' || ds.label === 'Lower Bound') chart.getDatasetMeta(i).hidden = meta.hidden;
                 });
               }
               chart.update();
@@ -482,19 +487,8 @@ document.addEventListener('DOMContentLoaded', () => {
           annotation: {
             annotations: {
               todayLine: {
-                type: 'line',
-                xMin: anchorDate,
-                xMax: anchorDate,
-                borderColor: 'rgba(100,100,100,0.5)',
-                borderWidth: 1.5,
-                borderDash: [5, 4],
-                label: {
-                  display: true,
-                  content: 'Today',
-                  position: 'start',
-                  font: { size: 10 },
-                  color: '#ffffff',
-                },
+                type: 'line', xMin: anchorDate, xMax: anchorDate, borderColor: textMain, borderWidth: 1.5, borderDash: [5, 4],
+                label: { display: true, content: 'Today', position: 'start', font: { size: 10 }, backgroundColor: textMain, color: currentTheme === 'light' ? '#ffffff' : '#000000' },
               },
             },
           },
@@ -503,20 +497,31 @@ document.addEventListener('DOMContentLoaded', () => {
               const label = tooltipItem.dataset.label;
               const pointDate = tooltipItem.raw.x;
               const hoverDate = tooltipItems[0].raw.x;
-
               if (label.includes('Bound')) return false;
               if (pointDate !== hoverDate) return false;
-
               for (let i = 0; i < currentIndex; i++) {
-                if (tooltipItems[i].datasetIndex === tooltipItem.datasetIndex)
-                  return false;
+                if (tooltipItems[i].datasetIndex === tooltipItem.datasetIndex) return false;
               }
-
               return true;
             },
             callbacks: {
               label: (ctx) => {
-                return `${ctx.dataset.label}: $${ctx.parsed.y.toFixed(2)}`;
+                const price = ctx.parsed.y.toFixed(2);
+                if (ctx.dataset.label !== 'Projected Stock Prices') {
+                  return `${ctx.dataset.label}: $${price}`;
+                }
+                // Look up whether this date falls within the forecast window and attach the CI range
+                const hoverDate = ctx.raw.x;
+                const ciIndex = data.Chart_Future_Dates.indexOf(hoverDate);
+                if (ciIndex !== -1) {
+                  const lo = data.Chart_Future_Lower[ciIndex].toFixed(2);
+                  const hi = data.Chart_Future_Upper[ciIndex].toFixed(2);
+                  return [
+                    `Projected Stock Price: $${price}`,
+                    `95% CI: $${lo} \u2013 $${hi}`,
+                  ];
+                }
+                return `Projected Stock Price: $${price}`;
               },
             },
           },
@@ -529,45 +534,11 @@ document.addEventListener('DOMContentLoaded', () => {
       type: 'line',
       data: {
         datasets: [
-          {
-            data: historyCoords,
-            borderColor: 'rgba(0,0,0,0)',
-            backgroundColor: '#374151',
-            pointRadius: 1,
-            showLine: false,
-            order: 1,
-          },
-          {
-            data: unifiedLineCoords,
-            borderColor: '#2563eb',
-            backgroundColor: 'transparent',
-            borderWidth: 1.5,
-            pointRadius: 0,
-            fill: false,
-            tension: 0.2,
-            order: 0,
-          },
+          { data: historyCoords, borderColor: 'rgba(0,0,0,0)', backgroundColor: chartHistory, pointRadius: 1, showLine: false, order: 1 },
+          { data: unifiedLineCoords, borderColor: `rgba(${brandRGB}, 1)`, backgroundColor: 'transparent', borderWidth: 1.5, pointRadius: 0, fill: false, tension: 0.2, order: 0 },
         ],
       },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        animation: false,
-        scales: {
-          x: {
-            type: 'time',
-            time: { unit: 'year', displayFormats: { year: 'yyyy' } },
-            grid: { display: false },
-            ticks: { display: false },
-          },
-          y: { display: false, min: 0 },
-        },
-        plugins: {
-          legend: { display: false },
-          tooltip: { enabled: false },
-          annotation: { annotations: {} },
-        },
-      },
+      options: { responsive: true, maintainAspectRatio: false, animation: false, scales: { x: { type: 'time', time: { unit: 'year' }, grid: { display: false }, ticks: { display: false } }, y: { display: false, min: 0 } }, plugins: { legend: { display: false }, tooltip: { enabled: false } } },
     });
 
     const navWrapper = document.getElementById('navWrapper');
@@ -582,9 +553,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let dragStartMin = 0;
     let dragStartMax = 0;
 
-    function tsToFrac(ts) {
-      return (ts - minTs) / (maxTs - minTs);
-    }
+    function tsToFrac(ts) { return (ts - minTs) / (maxTs - minTs); }
 
     function updateOverlays() {
       const W = navWrapper.getBoundingClientRect().width;
@@ -602,63 +571,21 @@ document.addEventListener('DOMContentLoaded', () => {
       priceChartInstance.update('none');
     }
 
-    [handleL, handleR].forEach((h) => {
-      h.addEventListener('mouseenter', () => {
-        h.style.background = 'rgba(37,99,235,1)';
-        h.style.boxShadow = '0 2px 8px rgba(37,99,235,0.4)';
-      });
-      h.addEventListener('mouseleave', () => {
-        if (dragMode !== 'left' && dragMode !== 'right') {
-          h.style.background = 'rgba(37,99,235,0.75)';
-          h.style.boxShadow = '0 1px 4px rgba(0,0,0,0.2)';
-        }
-      });
-    });
-
-    document.getElementById('navResetBtn').addEventListener('click', () => {
-      viewMin = minTs;
-      viewMax = maxTs;
-      updateOverlays();
-      applyViewToMainChart();
-    });
-
+    // Add and Remove custom active classes instead of hardcoding RGBs on Drag
     function onDragStart(e, mode) {
       dragMode = mode;
       dragStartX = e.clientX ?? e.touches[0].clientX;
       dragStartMin = viewMin;
       dragStartMax = viewMax;
-      if (mode === 'left') {
-        handleL.style.background = 'rgba(29,78,216,1)';
-        handleL.style.cursor = 'grabbing';
-      }
-      if (mode === 'right') {
-        handleR.style.background = 'rgba(29,78,216,1)';
-        handleR.style.cursor = 'grabbing';
-      }
+      if (mode === 'left') handleL.classList.add('nav-handle-active');
+      if (mode === 'right') handleR.classList.add('nav-handle-active');
       if (mode === 'pan') navWrapper.style.cursor = 'grabbing';
       e.preventDefault();
     }
 
     handleL.addEventListener('mousedown', (e) => onDragStart(e, 'left'));
     handleR.addEventListener('mousedown', (e) => onDragStart(e, 'right'));
-    navWrapper.addEventListener('mousedown', (e) => {
-      if (e.target === handleL || e.target === handleR) return;
-      onDragStart(e, 'pan');
-    });
-    handleL.addEventListener('touchstart', (e) => onDragStart(e, 'left'), {
-      passive: false,
-    });
-    handleR.addEventListener('touchstart', (e) => onDragStart(e, 'right'), {
-      passive: false,
-    });
-    navWrapper.addEventListener(
-      'touchstart',
-      (e) => {
-        if (e.target === handleL || e.target === handleR) return;
-        onDragStart(e, 'pan');
-      },
-      { passive: false },
-    );
+    navWrapper.addEventListener('mousedown', (e) => { if (e.target !== handleL && e.target !== handleR) onDragStart(e, 'pan'); });
 
     function onDragMove(e) {
       if (!dragMode) return;
@@ -668,190 +595,106 @@ document.addEventListener('DOMContentLoaded', () => {
       const span = dragStartMax - dragStartMin;
 
       if (dragMode === 'pan') {
-        let newMin = dragStartMin + dxTs;
-        let newMax = dragStartMax + dxTs;
-        if (newMin < minTs) {
-          newMin = minTs;
-          newMax = minTs + span;
-        }
-        if (newMax > maxTs) {
-          newMax = maxTs;
-          newMin = maxTs - span;
-        }
-        viewMin = newMin;
-        viewMax = newMax;
+        let newMin = dragStartMin + dxTs; let newMax = dragStartMax + dxTs;
+        if (newMin < minTs) { newMin = minTs; newMax = minTs + span; }
+        if (newMax > maxTs) { newMax = maxTs; newMin = maxTs - span; }
+        viewMin = newMin; viewMax = newMax;
       } else if (dragMode === 'left') {
-        viewMin = Math.max(
-          Math.min(dragStartMin + dxTs, viewMax - MIN_WINDOW),
-          minTs,
-        );
+        viewMin = Math.max(Math.min(dragStartMin + dxTs, viewMax - MIN_WINDOW), minTs);
       } else if (dragMode === 'right') {
-        viewMax = Math.min(
-          Math.max(dragStartMax + dxTs, viewMin + MIN_WINDOW),
-          maxTs,
-        );
+        viewMax = Math.min(Math.max(dragStartMax + dxTs, viewMin + MIN_WINDOW), maxTs);
       }
-
-      updateOverlays();
-      applyViewToMainChart();
-      e.preventDefault();
+      updateOverlays(); applyViewToMainChart(); e.preventDefault();
     }
 
     function onDragEnd() {
-      handleL.style.background = 'rgba(37,99,235,0.75)';
-      handleL.style.cursor = 'ew-resize';
-      handleR.style.background = 'rgba(37,99,235,0.75)';
-      handleR.style.cursor = 'ew-resize';
+      handleL.classList.remove('nav-handle-active');
+      handleR.classList.remove('nav-handle-active');
       navWrapper.style.cursor = 'ew-resize';
       dragMode = null;
     }
 
+    // Responsive window observer cleanup
+    if (window.navListeners) {
+      document.removeEventListener('mousemove', window.navListeners.onDragMove);
+      document.removeEventListener('mouseup', window.navListeners.onDragEnd);
+      if (window.navListeners.resizeObserver) window.navListeners.resizeObserver.disconnect();
+    }
+
+    const resizeObserver = new ResizeObserver(() => {
+      window.requestAnimationFrame(() => {
+        if (navWrapper.getBoundingClientRect().width > 0) {
+          updateOverlays();
+          applyViewToMainChart();
+        }
+      });
+    });
+
+    window.navListeners = { onDragMove, onDragEnd, resizeObserver };
     document.addEventListener('mousemove', onDragMove);
     document.addEventListener('mouseup', onDragEnd);
-    document.addEventListener('touchmove', onDragMove, { passive: false });
-    document.addEventListener('touchend', onDragEnd);
+    resizeObserver.observe(navWrapper);
+    
+    document.getElementById('navResetBtn').addEventListener('click', () => {
+      viewMin = minTs; viewMax = maxTs;
+      updateOverlays(); applyViewToMainChart();
+    });
 
     setTimeout(updateOverlays, 200);
 
-    const noDividend =
-      data.Next_Dividend_Date === 'N/A' || !histData.dividend_dates.length;
-
+    const noDividend = data.Next_Dividend_Date === 'N/A' || !histData.dividend_dates.length;
     if (noDividend) {
       document.getElementById('dividendChart').style.display = 'none';
       document.getElementById('noDividendOverlay').style.display = 'block';
     } else {
       const divLabelsMap = new Map();
-      
-      histData.dividend_dates.forEach((d, i) => {
-          divLabelsMap.set(d, {
-              amount: histData.dividend_amounts[i],
-              bgColor: '#111827',
-              upper: null,
-              lower: null,
-              isEst: false
-          });
-      });
+      histData.dividend_dates.forEach((d, i) => { divLabelsMap.set(d, { amount: histData.dividend_amounts[i], bgColor: chartHistory, upper: null, lower: null, isEst: false }); });
 
       const futureDates = data.Div_Future_Dates || [];
       const futureAmounts = data.Div_Future_Amounts || [];
       const futureUpper = data.Div_Future_Upper || [];
       const futureLower = data.Div_Future_Lower || [];
 
-      futureDates.forEach((d, i) => {
-          divLabelsMap.set(d, {
-              amount: futureAmounts[i],
-              bgColor: '#93c5fd',
-              upper: futureUpper[i],
-              lower: futureLower[i],
-              isEst: true
-          });
-      });
+      futureDates.forEach((d, i) => { divLabelsMap.set(d, { amount: futureAmounts[i], bgColor: `rgba(${brandRGB}, 0.7)`, upper: futureUpper[i], lower: futureLower[i], isEst: true }); });
 
       const sortedDivKeys = Array.from(divLabelsMap.keys()).sort((a, b) => new Date(a) - new Date(b));
-      
-      const finalDivLabels = [];
-      const finalDivAmounts = [];
-      const finalBgColors = [];
-      const ciUpper = [];
-      const ciLower = [];
+      const finalDivLabels = []; const finalDivAmounts = []; const finalBgColors = []; const ciUpper = []; const ciLower = [];
 
       sortedDivKeys.forEach(dateKey => {
           const entry = divLabelsMap.get(dateKey);
           finalDivLabels.push(entry.isEst ? `${dateKey} (Est.)` : dateKey);
-          finalDivAmounts.push(entry.amount);
-          finalBgColors.push(entry.bgColor);
-          ciUpper.push(entry.upper);
-          ciLower.push(entry.lower);
+          finalDivAmounts.push(entry.amount); finalBgColors.push(entry.bgColor); ciUpper.push(entry.upper); ciLower.push(entry.lower);
       });
 
       const ctxDiv = document.getElementById('dividendChart').getContext('2d');
       dividendChartInstance = new Chart(ctxDiv, {
         type: 'bar',
-        data: {
-          labels: finalDivLabels,
-          datasets: [
-            {
-              label: 'Dividend Payout ($)',
-              data: finalDivAmounts,
-              backgroundColor: finalBgColors,
-              borderRadius: 5,
-              borderSkipped: false,
-            },
-          ],
-        },
+        data: { labels: finalDivLabels, datasets: [{ label: 'Dividend Payout ($)', data: finalDivAmounts, backgroundColor: finalBgColors, borderRadius: 5 }] },
         options: {
-          responsive: true,
-          maintainAspectRatio: false,
+          color: textMain,
+          responsive: true, maintainAspectRatio: false,
           scales: {
-            x: {
-              grid: { display: false },
-              ticks: { maxRotation: 45, minRotation: 45, font: { size: 10 } },
-            },
-            y: {
-              grid: { color: 'rgba(0,0,0,0.05)' },
-              ticks: {
-                font: { size: 11 },
-                callback: (v) => `$${v.toFixed(2)}`,
-              },
-            },
+            x: { grid: { display: false }, ticks: { color: textMain, maxRotation: 45, minRotation: 45, font: { size: 10 } } },
+            y: { grid: { color: chartGrid }, ticks: { color: textMain, font: { size: 11 }, callback: (v) => `$${v.toFixed(2)}` } },
           },
           plugins: {
-            title: {
-              display: true,
-              text: 'Dividend History & Forecast with 95% Confidence Interval',
-              font: { size: 14, weight: '600' },
-              padding: { bottom: 16 },
-            },
-            legend: {
-              display: true,
-              labels: {
-                usePointStyle: true,
-                generateLabels: () => {
-                  const items = [
-                    {
-                      text: 'Historical Dividend Payout',
-                      fillStyle: '#111827',
-                      strokeStyle: 'transparent',
-                    },
-                  ];
-                  if (futureDates.length) {
-                    items.push({
-                      text: 'Projected Dividend Payout',
-                      fillStyle: '#93c5fd',
-                      strokeStyle: 'transparent',
-                    });
-                  }
+            title: { display: true, text: 'Dividend History & Forecast with 95% Confidence Interval', color: textMain, font: { size: 14, weight: '600' }, padding: { bottom: 16 } },
+            legend: { display: true, labels: { color: textMain, usePointStyle: true, generateLabels: () => {
+                  const items = [{ text: 'Historical Dividend Payout', fillStyle: chartHistory, strokeStyle: 'transparent', fontColor: textMain }];
+                  if (futureDates.length) items.push({ text: 'Projected Dividend Payout', fillStyle: `rgba(${brandRGB}, 0.7)`, strokeStyle: 'transparent', fontColor: textMain });
                   return items;
-                },
-              },
-            },
-            tooltip: {
-              callbacks: {
-                label: (ctx) => {
-                  const amount = ctx.parsed.y;
-                  const i = ctx.dataIndex;
-                  if (ciUpper[i] !== null && ciUpper[i] !== undefined) {
-                    return [
-                      `Projected Dividend Payout: $${amount.toFixed(2)}`,
-                      `95% CI: $${ciLower[i].toFixed(2)} – $${ciUpper[i].toFixed(2)}`,
-                    ];
-                  }
+            }}},
+            tooltip: { callbacks: { label: (ctx) => {
+                  const amount = ctx.parsed.y; const i = ctx.dataIndex;
+                  if (ciUpper[i] !== null && ciUpper[i] !== undefined) return [ `Projected Dividend Payout: $${amount.toFixed(2)}`, `95% CI: $${ciLower[i].toFixed(2)} – $${ciUpper[i].toFixed(2)}` ];
                   return `Historical Dividend Payout: $${amount.toFixed(2)}`;
-                },
-              },
-            },
+            }}},
           },
         },
       });
     }
   }
 
-  function showError(message) {
-    errorContainer.textContent = `Error: ${message}`;
-  }
-
-  function clearMessages() {
-    resultContainer.innerHTML = '';
-    errorContainer.textContent = '';
-  }
+  function showError(message) { errorContainer.textContent = `Error: ${message}`; }
+  function clearMessages() { resultContainer.innerHTML = ''; errorContainer.textContent = ''; }
 });
