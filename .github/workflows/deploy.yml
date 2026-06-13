@@ -174,8 +174,8 @@ jobs:
             sudo chown -R $(whoami):$(whoami) /home/ubuntu/stock-market-predictor
             git config --global --add safe.directory /home/ubuntu/stock-market-predictor
             git pull origin main
+            source venv/bin/activate
             pip install -r backend/requirements.txt
-            sudo systemctl restart forecaster
-            
+            sudo systemctl restart forecaster  
             sleep 10
-            curl --fail http://localhost:5001/ || (git reset --hard HEAD~1 && sudo systemctl restart forecaster && exit 1)
+            curl --fail http://localhost/ || (git reset --hard HEAD~1 && sudo systemctl restart forecaster && exit 1)

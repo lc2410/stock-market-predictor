@@ -94,20 +94,7 @@ Corporate dividends are structured, board-approved payouts rather than market-dr
 
 ---
 
-## Testing & Code Quality
-To ensure maximum reliability and prevent regressions, the application enforces strict quality gates through automated testing and static code analysis.
-
-* **Backend Testing (Pytest):** A comprehensive suite of unit and integration tests validate the machine learning pipeline. Tests simulate complex edge cases including mocked Yahoo Finance outages, missing dividend histories, and sparse ticker data. Code coverage is strictly maintained at **>95%**.
-* **Frontend E2E Testing (Playwright):** Automated headless browsers simulate real human interaction. Playwright tests the full UI lifecycle, including typing into the search bar, validating loading spinners, and verifying that the API successfully returns and renders the chart data.
-* **Static Analysis (SonarCloud):** Every pull request and push is scanned by SonarQube Cloud. It acts as an automated security gate, scanning for vulnerabilities, code smells, log injection risks, and enforcing test coverage minimums.
-* **Security & Linting:** Python code is checked for syntactical integrity using `Flake8`. Dependency trees are scanned for known CVEs and vulnerabilities using `safety` (Python) and `npm audit` (JavaScript).
-
----
-
-## Setup, Infrastructure, & Deployment
-This application has been elevated from a local script to a cloud-native, production-ready system utilizing Infrastructure as Code and Continuous Deployment.
-
-### Local Development
+## Local Development Setup
 1.  **Clone the repository:**
     ```bash
     git clone [https://github.com/lc2410/stock-market-predictor.git](https://github.com/lc2410/stock-market-predictor.git)
@@ -121,16 +108,18 @@ This application has been elevated from a local script to a cloud-native, produc
     ```
 3.  **Run the Local Server:**
     ```bash
-    python app.py
+    python3 app.py
     ```
     Navigate to `http://127.0.0.1:5001` in your browser.
 
-### Cloud Infrastructure (Terraform / OCI)
+---
+
+## Cloud Infrastructure (Terraform / OCI)
 The production environment is hosted on an **Oracle Cloud Infrastructure (OCI)** ARM-based instance (`VM.Standard.A1.Flex` shape with 4 OCPUs and 24GB RAM). 
 
 Rather than configuring the server manually through a web console, the entire cloud environment is strictly version-controlled and provisioned using **Terraform**. This guarantees that the network topology is reproducible, auditable, and easily deployable by anyone cloning this repository.
 
-#### Step 1: Prerequisites & Authentication
+### Step 1: Prerequisites & Authentication
 To deploy your own instance of this architecture, you must first configure Terraform to communicate securely with Oracle Cloud:
 1.  **Install Terraform** on your local machine.
 2.  **Generate OCI API Keys:** Create an RSA key pair in your Oracle Cloud console and copy the generated credentials.
@@ -145,7 +134,7 @@ To deploy your own instance of this architecture, you must first configure Terra
     ssh_public_key   = "ssh-rsa..."
     ```
 
-#### Step 2: Provisioning the Network and Compute Layer
+### Step 2: Provisioning the Network and Compute Layer
 The Terraform scripts in the `infra/` directory are designed to build a secure, isolated network topology from the ground up:
 * **Virtual Cloud Network (VCN):** Establishes the foundational private network.
 * **Internet Gateway & Route Tables:** Connects the VCN to the public internet.
@@ -158,8 +147,42 @@ terraform plan    # Reviews the exact infrastructure changes
 terraform apply   # Provisions the VCN, Subnets, and Virtual Machine
 ```
 
-### CI/CD Pipeline (GitHub Actions)
-The deployment lifecycle is fully automated through a rigorous, multi-stage GitHub Actions pipeline (`deploy.yml`). Pushing a commit to the `main` branch triggers the following sequence:
+---
+
+## Testing & Code Quality
+To ensure maximum reliability and prevent regressions, the application enforces strict quality gates through automated testing and static code analysis.
+
+### 1. Backend Testing (Pytest)
+A comprehensive suite of unit and integration tests validate the machine learning pipeline. Tests simulate complex edge cases including mocked Yahoo Finance outages, missing dividend histories, and sparse ticker data. Code coverage is strictly maintained at **>95%**.
+
+**Local Execution:**
+```bash
+# Run tests and generate terminal coverage report
+python3 -m pytest backend/tests/ --cov=. --cov-report=term
+```
+
+### 2. Frontend E2E Testing (Playwright)
+Automated headless browsers simulate real human interaction. Playwright tests the full UI lifecycle, including typing into the search bar, validating loading spinners, and verifying that the API successfully returns and renders the chart data.
+
+**Local Execution:**
+```bash
+# Navigate to the frontend directory and install dependencies
+cd frontend
+npm install
+npx playwright install 
+
+# Execute the End-to-End test suite
+npm run test:frontend
+```
+
+### 3. Static Analysis & Security
+* **SonarQube Cloud:** Every pull request and push is automatically scanned. It acts as a strict security gate, catching vulnerabilities, code smells, log injection risks, and enforcing test coverage minimums.
+* **Security & Linting:** Python code is checked for syntactical integrity using `Flake8`. Dependency trees are scanned for known CVEs and vulnerabilities using `safety` (Python) and `npm audit` (JavaScript).
+
+---
+
+## CI/CD Pipeline (GitHub Actions)
+The continuous integration and continuous delivery/deployment lifecycle is fully automated through a rigorous, multi-stage GitHub Actions pipeline (`deploy.yml`). Pushing a commit to the `main` branch triggers the following sequence:
 
 1. **Security & Vulnerability Scan:** Audits Python and NPM dependencies for known CVEs.
 2. **Code Linting:** Runs Flake8 to ensure Python styling and syntax standards.
