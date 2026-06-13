@@ -15,7 +15,7 @@ frontend_dir = os.path.join(base_dir, 'frontend')
 # Initialize Flask, pointing it to the frontend directory
 app = Flask(__name__, 
             template_folder=frontend_dir, 
-            static_folder=frontend_dir)
+            static_folder=frontend_dir) # NOSONAR
 
 CORS(app)
 

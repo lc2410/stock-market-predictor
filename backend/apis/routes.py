@@ -33,7 +33,8 @@ def search(query):
 @api_bp.route('/predict/<string:ticker>', methods=['GET'])
 def predict(ticker):
     """Run the ML pipeline and return the forecast alongside historical chart data."""
-    logger.info(f"Received prediction request for ticker: {ticker}")
+    safe_ticker = ticker.replace('\n', '').replace('\r', '')
+    logger.info(f"Received prediction request for ticker: {safe_ticker}")
     try:
         prediction_df = run_real_time_model(ticker.upper())
         if prediction_df is None:

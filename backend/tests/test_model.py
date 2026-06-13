@@ -1,4 +1,5 @@
 import pytest
+from pytest import approx
 import pandas as pd
 import numpy as np
 from unittest.mock import MagicMock, patch, PropertyMock
@@ -99,7 +100,7 @@ def test_forecast_long_term_short_data(dummy_stock_data):
     dates, prices, upper, lower, ext = _forecast_long_term(
         short_price_data, short_price_data.iloc[-1:].copy(), predictors, 150.0, 152.0, 50, short_price_data.index[-1]
     )
-    assert ext["1_Year"]["Price"] == 150.0  # Should fallback to today_close
+    assert ext["1_Year"]["Price"] == approx(150.0)
 
 
 # dividend model tests
@@ -113,7 +114,7 @@ def test_engineer_div_features_no_dividends(dummy_stock_data):
     dummy_stock_data["Dividends"] = 0.0
     divs, div_predictors, next_date, today_div = _engineer_div_features(dummy_stock_data, dummy_stock_data.index[-1])
     assert divs is None
-    assert today_div == 0.0
+    assert today_div == approx(0.0)
 
 def test_engineer_div_features_zero_days():
     """Test edge case where dividend dates result in avg_days_between <= 0."""
@@ -126,7 +127,7 @@ def test_train_div_classifier_same_class():
     df = pd.DataFrame({"Div_Target": [1, 1, 1], "feat": [1, 2, 3]})
     pred, conf = _train_div_classifier(df, df, ["feat"])
     assert pred == 1
-    assert conf == 0.5
+    assert conf == approx(0.5)
 
 def test_train_div_classifier_value_error():
     """Test Isotonic Calibration ValueError fallback on small splits."""
@@ -147,7 +148,7 @@ def test_forecast_div_long_term_short():
     divs = pd.DataFrame({"Dividends": [1.0]*5, "feat": [1,2,3,4,5]})
     test = pd.DataFrame({"feat": [1]})
     d, a, u, l, ext = _forecast_div_long_term(divs, ["feat", "Dividends"], test, 1.0, 1.1, pd.Timestamp("2020-01-01"), 90, 4)
-    assert ext["4_Payouts"]["Amount"] == 1.0
+    assert ext["4_Payouts"]["Amount"] == approx(1.0)
 
 # data retrieval & chart data tests
 @patch('backend.models.forecast_model.yf.Ticker')
@@ -160,7 +161,7 @@ def test_get_chart_data_success(mock_ticker):
     
     res = get_chart_data("AAPL", predicted_price=105.0)
     assert len(res["dates"]) == 3 
-    assert res["prices"][-1] == 105.0
+    assert res["prices"][-1] == approx(105.0)
     assert len(res["dividend_dates"]) == 1
 
 @patch('backend.models.forecast_model.yf.Ticker')

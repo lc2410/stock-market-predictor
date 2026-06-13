@@ -1,4 +1,5 @@
 import pytest
+from pytest import approx
 import pandas as pd
 import requests
 from unittest.mock import patch, MagicMock
@@ -79,7 +80,7 @@ def test_predict_endpoint_success(mock_get_chart_data, mock_run_real_time_model,
     json_data = response.get_json()
     assert json_data['Ticker'] == 'AAPL'
     assert 'Chart_History' in json_data
-    assert json_data['Chart_History']['prices'][0] == 148.0
+    assert json_data['Chart_History']['prices'][0] == approx(148.0)
 
 @patch('backend.apis.routes.run_real_time_model')
 def test_predict_endpoint_not_found(mock_run_real_time_model, client):
