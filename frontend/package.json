@@ -1,0 +1,12 @@
+{
+  "name": "stock-forecaster-frontend",
+  "version": "1.0.0",
+  "scripts": {
+    "lint:js": "eslint scripts/main.js",
+    "test:frontend": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.44.0",
+    "eslint": "^8.57.0"
+  }
+}
