@@ -113,6 +113,9 @@ jobs:
         run: |
           cd frontend
           npm install
+          sudo rm -f /etc/apt/sources.list.d/azure-cli.list
+          sudo rm -f /etc/apt/sources.list.d/microsoft-prod.list
+          sudo apt-get update
           npx playwright install --with-deps
           
       - name: Boot Flask Backend
