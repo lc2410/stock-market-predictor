@@ -38,15 +38,15 @@ def predict(ticker):
     try:
         prediction_df = run_real_time_model(ticker.upper())
         if prediction_df is None:
-            logger.warning(f"Could not generate prediction for {ticker}.")
-            return jsonify({"error": f"Invalid ticker or insufficient data for {ticker}."}), 404
+            logger.warning(f"Could not generate prediction for {safe_ticker}.")
+            return jsonify({"error": f"Invalid ticker or insufficient data for {safe_ticker}."}), 404
         
         result = prediction_df.to_dict(orient='records')[0]
         result['Chart_History'] = get_chart_data(ticker, None)
 
-        logger.info(f"Successfully generated prediction for {ticker}.")
+        logger.info(f"Successfully generated prediction for {safe_ticker}.")
         return jsonify(result)
 
     except Exception as e:
-        logger.error(f"Error for ticker {ticker}: {e}", exc_info=True)
+        logger.error(f"Error for ticker {safe_ticker}: {e}", exc_info=True)
         return jsonify({"error": "An internal server error occurred."}), 500
