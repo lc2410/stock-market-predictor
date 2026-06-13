@@ -1,18 +1,35 @@
-# project specific files and directories to ignore
+# Virtual Environment
 stock-market-predictor-env/
+
+# Python Artifacts
 __pycache__/
 *.pyc
+
+# OS Generated Files
 .DS_Store
+
+# Environment Variables & Secrets
 .env
+*.pem
+*.key
 
-# Local Terraform variables
-/infra/terraform.tfvars
+# Testing & Coverage Artifacts
+.pytest_cache/
+.coverage
+coverage.xml
 
-# Terraform state and directories
-.terraform/
+# Frontend & Playwright Artifacts
+frontend/node_modules/
+frontend/test-results/
+frontend/playwright-report/
+
+# Terraform State & Directories
+infra/.terraform/
+infra/terraform.tfvars
 *.tfstate
 *.tfstate.backup
 
-# Security keys (fallback protection)
-*.pem
-*.key
+# Project Specific Local Files
+reset-env.sh
+to-do.txt
+app.log

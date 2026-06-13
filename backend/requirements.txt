@@ -4,3 +4,6 @@ scikit-learn
 Flask
 Flask-Cors
 gunicorn
+pytest
+pytest-cov
+flake8

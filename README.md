@@ -18,6 +18,31 @@ To ensure enterprise-grade stability, security, and performance, this applicatio
 2. **Web Server (Nginx Reverse Proxy):** Nginx acts as the secure front door to the application. It intercepts incoming public HTTP traffic on port 80 and buffers requests to protect the internal server from slow clients or malicious spikes. It safely proxies validated dynamic requests to the internal application layer.
 3. **Application Server (Gunicorn WSGI):** Web servers and Python applications speak different protocols. Gunicorn acts as the essential Web Server Gateway Interface (WSGI) translator. It runs as a highly available background `systemd` service on internal port 8000 and manages a pool of worker processes that execute the Flask code in parallel.
 4. **API & ML Execution:** The Flask routing layer handles API requests. It proxies Yahoo Finance autocomplete queries to bypass CORS restrictions. It also catches prediction requests to trigger the algorithmic pipeline. This fetches real-time data, dynamically trains and executes the machine learning models, and returns the multi-horizon forecast as structured JSON.
+5. **CI/CD Pipeline:** An automated workflow that triggers on code changes to enforce strict quality control. Before any code reaches the production server, the pipeline executes security vulnerability scans, code linting, automated test suites, and static code analysis, ensuring only stable, validated code is deployed to the Oracle Cloud virtual machine.
+6. **Data Source:** The external provider for all live and historical financial data. The backend interfaces with Yahoo Finance to continuously resolve partial ticker symbols for the search autocomplete, and to fetch the extensive historical price and dividend datasets required to train the machine learning models in real-time.
+
+---
+
+## Project File Structure
+The repository is organized into cleanly separated domains to maintain strict modularity between the infrastructure, machine learning, API, and client-facing layers.
+
+```text
+stock-market-predictor/
+├── .github/workflows/
+│   └── deploy.yml            # Automated CI/CD pipeline configuration
+├── backend/
+│   ├── apis/                 # Flask routing and API endpoints
+│   ├── models/               # Scikit-learn ML pipeline & data fetching
+│   └── tests/                # Pytest unit and integration test suite
+├── frontend/
+│   ├── scripts/              # Vanilla JS, DOM manipulation, and Chart.js logic
+│   ├── styles/               # UI styling and layout
+│   ├── tests/                # Playwright End-to-End (E2E) browser tests
+│   └── index.html            # Main web interface
+├── infra/                    # Terraform Infrastructure as Code (IaC) scripts
+├── app.py                    # Flask application bootloader
+└── sonar-project.properties  # SonarCloud static analysis configuration
+```
 
 ---
 
@@ -69,8 +94,17 @@ Corporate dividends are structured, board-approved payouts rather than market-dr
 
 ---
 
-## Setup, Infrastructure, & Deployment
+## Testing & Code Quality
+To ensure maximum reliability and prevent regressions, the application enforces strict quality gates through automated testing and static code analysis.
 
+* **Backend Testing (Pytest):** A comprehensive suite of unit and integration tests validate the machine learning pipeline. Tests simulate complex edge cases including mocked Yahoo Finance outages, missing dividend histories, and sparse ticker data. Code coverage is strictly maintained at **>95%**.
+* **Frontend E2E Testing (Playwright):** Automated headless browsers simulate real human interaction. Playwright tests the full UI lifecycle, including typing into the search bar, validating loading spinners, and verifying that the API successfully returns and renders the chart data.
+* **Static Analysis (SonarCloud):** Every pull request and push is scanned by SonarQube Cloud. It acts as an automated security gate, scanning for vulnerabilities, code smells, log injection risks, and enforcing test coverage minimums.
+* **Security & Linting:** Python code is checked for syntactical integrity using `Flake8`. Dependency trees are scanned for known CVEs and vulnerabilities using `safety` (Python) and `npm audit` (JavaScript).
+
+---
+
+## Setup, Infrastructure, & Deployment
 This application has been elevated from a local script to a cloud-native, production-ready system utilizing Infrastructure as Code and Continuous Deployment.
 
 ### Local Development
@@ -124,8 +158,14 @@ terraform plan    # Reviews the exact infrastructure changes
 terraform apply   # Provisions the VCN, Subnets, and Virtual Machine
 ```
 
-### Continuous Deployment (GitHub Actions)
-The deployment lifecycle is fully automated. Pushing a commit to the `main` branch triggers a secure GitHub Actions workflow (`.github/workflows/deploy.yml`). This CI/CD pipeline establishes an SSH connection to the OCI instance, pulls the latest repository updates, and seamlessly restarts the Gunicorn `systemd` service to serve the new code with zero manual intervention.
+### CI/CD Pipeline (GitHub Actions)
+The deployment lifecycle is fully automated through a rigorous, multi-stage GitHub Actions pipeline (`deploy.yml`). Pushing a commit to the `main` branch triggers the following sequence:
+
+1. **Security & Vulnerability Scan:** Audits Python and NPM dependencies for known CVEs.
+2. **Code Linting:** Runs Flake8 to ensure Python styling and syntax standards.
+3. **Automated Testing:** Boots a localized version of the app and runs both the Pytest backend suite and the Playwright E2E browser tests.
+4. **Static Code Analysis:** Uploads the XML test coverage reports to SonarCloud to verify the Quality Gate passes.
+5. **Zero-Downtime Deployment:** Only if all prior stages pass perfectly, the pipeline establishes a secure SSH connection to the OCI production instance, pulls the latest repository updates, and gracefully restarts the Gunicorn `systemd` service to serve the new code.
 
 ---
 
@@ -138,9 +178,11 @@ You can access the live production environment hosted on Oracle Cloud here: [htt
 ---
 
 ## Core Technologies
-* **Infrastructure & DevOps:** Oracle Cloud (OCI), Terraform, GitHub Actions (CI/CD), Linux (Ubuntu)
+* **Cloud & Infrastructure:** Oracle Cloud (OCI), Terraform, Linux (Ubuntu)
+* **CI/CD & DevOps:** GitHub Actions, SonarCloud (Static Analysis)
 * **Web Serving:** Nginx (Reverse Proxy), Gunicorn (WSGI)
 * **Back-End:** Python, Flask
 * **Machine Learning:** Scikit-learn, Pandas, NumPy
 * **Data Sourcing:** yfinance (Yahoo Finance API)
 * **Front-End:** HTML5, CSS3, JavaScript, Chart.js
+* **Testing:** Pytest (Unit/Integration), Playwright (E2E UI Testing)
