@@ -1,11 +1,26 @@
 from flask import Blueprint, jsonify, render_template
 import requests
 import logging
+import pandas as pd
 from backend.models.forecast_model import run_real_time_model, get_chart_data
 
 # This file defines the API routes for the Flask application.
 api_bp = Blueprint('api', __name__)
 logger = logging.getLogger(__name__)
+
+def sanitize_for_json(obj):
+    """Recursively scrubs NaN and Infinity from the payload so JSON.parse never crashes."""
+    if isinstance(obj, dict):
+        return {k: sanitize_for_json(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [sanitize_for_json(v) for v in obj]
+    elif isinstance(obj, float):
+        # Convert NaN, inf, and -inf to None (which becomes 'null' in JSON)
+        if pd.isna(obj) or obj == float('inf') or obj == float('-inf'):
+            return None
+    elif pd.isna(obj): # Catches pd.NaT and other numpy NaN types
+        return None
+    return obj
 
 @api_bp.route('/')
 def home():
@@ -44,8 +59,10 @@ def predict(ticker):
         result = prediction_df.to_dict(orient='records')[0]
         result['Chart_History'] = get_chart_data(ticker, None)
 
+        clean_result = sanitize_for_json(result)
+
         logger.info(f"Successfully generated prediction for {safe_ticker}.")
-        return jsonify(result)
+        return jsonify(clean_result)
 
     except Exception as e:
         logger.error(f"Error for ticker {safe_ticker}: {e}", exc_info=True)

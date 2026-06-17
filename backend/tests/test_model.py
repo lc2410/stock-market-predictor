@@ -4,11 +4,10 @@ import pandas as pd
 import numpy as np
 from unittest.mock import MagicMock, patch, PropertyMock
 from backend.models.forecast_model import (
-    _engineer_features, 
-    _prune_features, 
+    _engineer_price_features, 
     _train_price_classifier,
     _train_price_regressor,
-    _forecast_long_term,
+    _forecast_price_long_term,
     _engineer_div_features,
     _train_div_classifier,
     _train_div_regressor,
@@ -39,65 +38,59 @@ def dummy_stock_data():
 
 
 # price model tests
-def test_engineer_features_creates_correct_columns(dummy_stock_data):
-    price_data, predictors = _engineer_features(dummy_stock_data)
+def test_engineer_price_features_creates_correct_columns(dummy_stock_data):
+    price_data, predictors = _engineer_price_features(dummy_stock_data)
     assert len(price_data) > 0
     assert "RSI_14" in predictors
     assert "Price_Target" in price_data.columns
 
-def test_prune_features(dummy_stock_data):
-    price_data, predictors = _engineer_features(dummy_stock_data)
-    pruned_predictors = _prune_features(price_data, predictors, "TEST")
-    assert len(pruned_predictors) < len(predictors)
-
 def test_train_price_classifier(dummy_stock_data):
-    price_data, predictors = _engineer_features(dummy_stock_data)
-    pruned = _prune_features(price_data, predictors, "TEST")
+    price_data, predictors = _engineer_price_features(dummy_stock_data)
     train = price_data.iloc[-500:-1]  
     test = price_data.iloc[-1:].copy()       
-    direction, confidence = _train_price_classifier(train, test, pruned, "TEST")
+    direction, confidence = _train_price_classifier(train, test, predictors, "TEST")
     assert direction in [0, 1]
     assert 0.0 <= confidence <= 1.0
 
 def test_train_price_regressor_up(dummy_stock_data):
     """Test regressor forcing an upward trajectory."""
-    price_data, predictors = _engineer_features(dummy_stock_data)
-    pruned = _prune_features(price_data, predictors, "TEST")
+    price_data, predictors = _engineer_price_features(dummy_stock_data)
     train = price_data.iloc[-500:-1]  
     test = price_data.iloc[-1:].copy()
     today_close = float(test["Close"].values[0])
-    forecast, fit_dates, fit_prices = _train_price_regressor(
-        train, test, pruned, direction=1, today_close=today_close, 
+    
+    forecast, fit_prices = _train_price_regressor(
+        train, test, predictors, direction=1, today_close=today_close, 
         ticker="TEST", target_dates=price_data.index[-500:-1]
     )
     assert forecast >= round(today_close * 1.001, 2)
 
 def test_train_price_regressor_down(dummy_stock_data):
     """Test regressor forcing a downward trajectory."""
-    price_data, predictors = _engineer_features(dummy_stock_data)
-    pruned = _prune_features(price_data, predictors, "TEST")
+    price_data, predictors = _engineer_price_features(dummy_stock_data)
     train = price_data.iloc[-500:-1]  
     test = price_data.iloc[-1:].copy()
     today_close = float(test["Close"].values[0])
-    forecast, fit_dates, fit_prices = _train_price_regressor(
-        train, test, pruned, direction=0, today_close=today_close, 
+    
+    forecast, fit_prices = _train_price_regressor(
+        train, test, predictors, direction=0, today_close=today_close, 
         ticker="TEST", target_dates=price_data.index[-500:-1]
     )
     assert forecast <= round(today_close * 0.999, 2)
 
-def test_forecast_long_term_full_data(dummy_stock_data):
-    price_data, predictors = _engineer_features(dummy_stock_data)
-    dates, prices, upper, lower, ext = _forecast_long_term(
+def test_forecast_price_long_term_full_data(dummy_stock_data):
+    price_data, predictors = _engineer_price_features(dummy_stock_data)
+    dates, prices, upper, lower, ext = _forecast_price_long_term(
         price_data, price_data.iloc[-1:].copy(), predictors, 150.0, 152.0, 500, price_data.index[-1]
     )
     assert len(dates) == 252
     assert "1_Year" in ext
 
-def test_forecast_long_term_short_data(dummy_stock_data):
+def test_forecast_price_long_term_short_data(dummy_stock_data):
     """Test long term forecast fallback when there are fewer than 100 days of data."""
-    price_data, predictors = _engineer_features(dummy_stock_data)
+    price_data, predictors = _engineer_price_features(dummy_stock_data)
     short_price_data = price_data.iloc[-50:] 
-    dates, prices, upper, lower, ext = _forecast_long_term(
+    dates, prices, upper, lower, ext = _forecast_price_long_term(
         short_price_data, short_price_data.iloc[-1:].copy(), predictors, 150.0, 152.0, 50, short_price_data.index[-1]
     )
     assert ext["1_Year"]["Price"] == approx(150.0)
@@ -118,9 +111,9 @@ def test_engineer_div_features_no_dividends(dummy_stock_data):
 
 def test_engineer_div_features_zero_days():
     """Test edge case where dividend dates result in avg_days_between <= 0."""
-    df = pd.DataFrame({"Dividends": [1.0]*15}, index=[pd.Timestamp("2020-01-01")]*15)
+    df = pd.DataFrame({"Dividends": [1.0]*15, "Close": [100.0]*15}, index=[pd.Timestamp("2020-01-01")]*15)
     divs, preds, n_date, t_div = _engineer_div_features(df, pd.Timestamp("2020-01-02"))
-    assert n_date == pd.Timestamp("2020-01-01") + pd.Timedelta(days=90) # Should default to 90 days
+    assert n_date == pd.Timestamp("2020-01-01") + pd.Timedelta(days=90)
 
 def test_train_div_classifier_same_class():
     """Test classifier fallback when the company's dividend never changes."""
@@ -138,9 +131,9 @@ def test_train_div_classifier_value_error():
 
 def test_train_div_regressor_down():
     """Test dividend regressor forcing a downward trajectory."""
-    train = pd.DataFrame({"Next_Dividend": [1.0, 1.1, 1.2, 0.9], "feat": [1, 2, 3, 4]})
+    train = pd.DataFrame({"Dividends": [1.0, 1.0, 1.0, 1.0], "Next_Dividend": [1.0, 1.1, 1.2, 0.9], "feat": [1, 2, 3, 4]})
     test = pd.DataFrame({"feat": [4]})
-    forecast = _train_div_regressor(train, test, ["feat"], div_pred=0, today_div=1.0)
+    forecast, fit_amounts = _train_div_regressor(train, test, ["feat"], div_pred=0, today_div=1.0)
     assert forecast <= 1.0 * 0.999
 
 def test_forecast_div_long_term_short():

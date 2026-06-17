@@ -2,6 +2,8 @@ import pytest
 from pytest import approx
 import pandas as pd
 import requests
+import numpy as np
+from backend.apis.routes import sanitize_for_json
 from unittest.mock import patch, MagicMock
 from app import app
 
@@ -101,3 +103,60 @@ def test_predict_endpoint_internal_error(mock_run_real_time_model, client):
     response = client.get('/predict/CRASH')
     assert response.status_code == 500
     assert "internal server error" in response.get_json()["error"].lower()
+
+# sanitizer tests
+def test_sanitize_clean_data():
+    """Verifies that standard data types (strings, ints, valid floats, booleans) pass through untouched."""
+    clean_data = {
+        "Ticker": "AAPL",
+        "Forecasted_Close": 150.50,
+        "Chart_History": [148.0, 149.0, 150.0],
+        "Is_Valid": True
+    }
+    result = sanitize_for_json(clean_data)
+    assert result == clean_data
+
+def test_sanitize_invalid_floats():
+    """Verifies that Python and Numpy versions of NaN, Infinity, and -Infinity are correctly converted to None."""
+    dirty_data = [
+        float('nan'), float('inf'), float('-inf'), 
+        np.nan, np.inf, -np.inf
+    ]
+    result = sanitize_for_json(dirty_data)
+    
+    # Every single item in the array should have been neutralized to `None`
+    assert all(item is None for item in result)
+
+def test_sanitize_nested_structures():
+    """Verifies the sanitizer successfully recurses through deeply nested dictionaries and lists."""
+    nested_dirty_data = {
+        "Ticker": "TSLA",
+        "Metrics": {
+            "PE_Ratio": float('nan'),
+            "Moving_Averages": [200.5, float('inf'), 198.2]
+        },
+        "Flags": [float('-inf'), {"bad_val": np.nan}]
+    }
+    
+    expected_clean_data = {
+        "Ticker": "TSLA",
+        "Metrics": {
+            "PE_Ratio": None,
+            "Moving_Averages": [200.5, None, 198.2]
+        },
+        "Flags": [None, {"bad_val": None}]
+    }
+    
+    result = sanitize_for_json(nested_dirty_data)
+    assert result == expected_clean_data
+
+def test_sanitize_pandas_types():
+    """Verifies that Pandas-specific missing types (like NaT for missing dates) are handled correctly."""
+    pd_data = {
+        "Missing_Date": pd.NaT, 
+        "Missing_Value": pd.NA
+    }
+    result = sanitize_for_json(pd_data)
+    
+    assert result["Missing_Date"] is None
+    assert result["Missing_Value"] is None
