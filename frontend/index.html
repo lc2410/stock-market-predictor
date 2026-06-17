@@ -29,10 +29,12 @@
             </div>
             <button id="predictBtn">Get Forecast</button>
         </div>
-        <div id="loader" style="display: none; text-align: center; margin: 30px 0;">
+        
+        <div id="loader" class="loader-container">
             <div class="loader"></div>
-            <div style="color: var(--text-muted); font-weight: 500; margin-top: 12px;">Fetching prediction data...</div>
+            <div class="loader-text">Fetching prediction data...</div>
         </div>
+        
         <div id="resultContainer"></div>
         <div id="errorContainer" class="error-message"></div>
     </div>

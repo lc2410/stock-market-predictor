@@ -62,16 +62,21 @@ The forecasting engine abandons simple linear models in favor of dynamic feature
 ### 1. Data Collection & Structuring
 Upon receiving a ticker symbol, the `yfinance` library retrieves the maximum available daily price and dividend history dating back to 2010. This raw data is immediately cleaned, indexed, and prepared for quantitative analysis.
 
-### 2. Feature Engineering & Dynamic Pruning
-Raw stock prices do not tell the model why the price is moving. The pipeline engineers over 40 distinct features to give the models deep contextual awareness:
+### 2. Feature Engineering
+Raw stock prices do not tell the model why the price is moving, and raw dividend amounts lack corporate context. The pipeline engineers a focused set of technical and fundamental features:
 
-* **Time-Horizon Analysis:** Rolling volatility, momentum, and close-to-mean ratios are calculated across 9 distinct lookback windows from 2 days up to 5 years.
+**Price Pipeline Features:**
+* **Price Action & Momentum:** Calculates logarithmic returns and lagged returns to measure the raw signal and speed of immediate price movements.
 * **Quantitative Market Indicators:**
-    * **Relative Strength Index (RSI):** Measures the speed and change of price movements to signal "overbought" or "oversold" conditions.
-    * **MACD:** Tracks the relationship between 12-day and 26-day moving averages to quantify shifts in trend direction and momentum acceleration.
-    * **Bollinger Bands:** Calculates band width for detecting volatility breakouts and the stock position relative to the bands for dynamic support/resistance.
-    * **Normalized Average True Range (ATR):** Measures pure market volatility to provide a mathematical boundary for daily price movements.
-* **Dynamic Noise Reduction:** Before final training, the system runs a low-depth Random Forest to evaluate feature importance. It dynamically drops the bottom 25% of the lowest-performing features to reduce dimensionality.
+    * **Relative Strength Index (RSI-14):** Measures the speed and change of price movements to signal "overbought" or "oversold" conditions.
+    * **MACD:** Tracks the relationship between short-term and long-term exponential moving averages to quantify shifts in trend direction and momentum acceleration.
+    * **Bollinger Bands:** Calculates band width for detecting volatility breakouts and the stock's position relative to the bands for dynamic support/resistance.
+* **Volume Context:** Calculates short-term volume ratios to determine if there is institutional conviction behind recent price movements.
+
+**Dividend Pipeline Features:**
+* **Immediate Growth Rate:** Calculates the period-over-period percentage change to detect recent payout bumps or cuts (`Div_Growth_1`).
+* **Short-Term Historical Trends:** Uses a 4-cycle (1-year) rolling average of payouts to smooth out special dividends and establish a baseline trajectory (`Rolling_Avg_4`).
+* **Trailing Price Performance:** Ingests the 252-day (1-year) trailing stock price return to correlate broader corporate health and market performance with board payout decisions (`Price_Return_252`).
 
 ### 3. The Price Forecasting Engine
 The price prediction pipeline is split into a highly reactive short-term model and a macro-focused long-term model.
@@ -85,12 +90,18 @@ The price prediction pipeline is split into a highly reactive short-term model a
 To map a full trading year (252 days), the system chains the short-term and macro models together. It explicitly takes the output of the Next-Day Magnitude Regressor to anchor the immediate trajectory at Day 1. It then trains three separate, horizon-specific regressors targeting cumulative log-returns at the 5-day, 21-day, and 252-day marks. The daily path is seamlessly stitched together using log-linear interpolation and bounded by a dynamic 95% Margin of Error band derived from historical daily volatility.
 
 ### 4. The Dividend Forecasting Engine
-Corporate dividends are structured, board-approved payouts rather than market-driven trades. The application runs an isolated, parallel pipeline to predict them:
+Corporate dividends are structured, board-approved payouts rather than market-driven trades. The application runs an isolated, parallel pipeline to predict them, sharing the same robust architecture as the price engine:
 
-* **The Directional Classifier (Payout Trend):** This dedicated `RandomForestClassifier` evaluates fundamental features like dividend growth rates and rolling averages over the last 4, 6, and 8 payout cycles. This determines the probability of the next dividend increasing, decreasing, or remaining flat.
-* **The Magnitude Regressor (Payout Amount):** Operating in tandem with the classifier, a separate `RandomForestRegressor` uses the same fundamental context to forecast the exact dollar amount of the upcoming yield. 
-* **The Payout Date Projector:** The projected date is calculated dynamically by mapping the historical spacing between past payouts to project the exact calendar date of the next distribution.
-* **The Long-Term Trajectory Regressors:** Anchoring off the next predicted payout, this module forecasts the exact dollar amount of the 2nd, 3rd, and 4th future payout cycles out to 1 year using horizon-specific Random Forest algorithms.
+#### The Next-Payout Predictor (Short-Term)
+* **The Directional Classifier:** A `RandomForestClassifier` wrapped in an Isotonic calibrator. This determines the statistical probability of the next dividend increasing, decreasing, or remaining flat based on recent fundamental features.
+* **The Magnitude Regressor:** Operating in tandem with the classifier, a separate `RandomForestRegressor` uses the same fundamental context to forecast the exact dollar amount of the upcoming yield using log-growth transformations.
+* **The Alignment Phase:** Just like the price pipeline, predicting binary direction is statistically more reliable than exact magnitude. The Classifier acts as the authoritative voice. If the Regressor's raw dollar amount contradicts the Classifier's direction, the magnitude is mathematically overridden to ensure logical consistency.
+* **The Payout Date Projector:** The projected ex-dividend date is calculated dynamically by mapping the historical average spacing between past payouts.
+
+#### The Long-Term Trajectory Engine
+To map out a full year of passive income, the system chains the short-term and macro models together. 
+* Anchoring off the next predicted payout, this module forecasts the exact dollar amount of the 2nd, 3rd, and 4th future payout cycles using horizon-specific Random Forest algorithms. 
+* The multi-cycle trajectory is bounded by a dynamic 95% Margin of Error band derived from historical payout volatility.
 
 ---
 
