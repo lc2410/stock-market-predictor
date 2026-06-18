@@ -99,9 +99,7 @@ Corporate dividends are structured, board-approved payouts rather than market-dr
 * **The Payout Date Projector:** The projected ex-dividend date is calculated dynamically by mapping the historical average spacing between past payouts.
 
 #### The Long-Term Trajectory Engine
-To map out a full year of passive income, the system chains the short-term and macro models together. 
-* Anchoring off the next predicted payout, this module forecasts the exact dollar amount of the 2nd, 3rd, and 4th future payout cycles using horizon-specific Random Forest algorithms. 
-* The multi-cycle trajectory is bounded by a dynamic 95% Margin of Error band derived from historical payout volatility.
+To map out a full year of passive income, the system chains the short-term and macro models together. By specifically anchoring off the next predicted payout, this module forecasts the exact dollar amount of the 2nd, 3rd, and 4th future payout cycles using horizon-specific Random Forest algorithms. The multi-cycle trajectory is bounded by a dynamic 95% Margin of Error band derived from historical payout volatility.
 
 ---
 
@@ -169,8 +167,8 @@ A comprehensive suite of unit and integration tests validate the machine learnin
 
 **Local Execution:**
 ```bash
-# Run tests and generate terminal coverage report
-python3 -m pytest backend/tests/ --cov=. --cov-report=term
+# Run tests and generate terminal coverage report and a line-by-line HTML visual report
+python3 -m pytest backend/tests/ --cov=. --cov-report=term --cov-report=html
 ```
 
 ### 2. Frontend E2E Testing (Playwright)
