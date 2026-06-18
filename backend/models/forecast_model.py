@@ -100,8 +100,9 @@ def _engineer_price_features(data):
     price_data["BB_Width"] = (4 * roll_std) / (roll_mean + 1e-9)
     price_data["BB_Pos"] = (price_data["Close"] - (roll_mean - 2 * roll_std)) / (4 * roll_std + 1e-9)
 
-    # Volume Context (Is there conviction behind the move?)
-    price_data["Vol_Ratio_10"] = price_data["Volume"] / price_data["Volume"].rolling(10).mean()
+    # Volume Context: (Is there institutional conviction behind recent price movements?)
+    rolling_vol = price_data["Volume"].rolling(10).mean()
+    price_data["Vol_Ratio_10"] = np.where(rolling_vol > 0, price_data["Volume"] / rolling_vol, 1.0)
 
     predictors = [
         "Log_Return", "Return_Lag_1", "RSI_14", "MACD_Hist", 
@@ -427,57 +428,30 @@ def run_real_time_model(ticker, price_window=1260, div_window=20):
             _forecast_div_long_term(divs, div_predictors, test_div, today_div, forecasted_div, next_dividend_date, avg_days_between, div_window)
         )
 
-   
-    # Format Dates
-    next_trading_day_str = (anchor_date + _get_us_bday()).strftime('%Y-%m-%d')
-    next_div_date_str = next_dividend_date.strftime('%Y-%m-%d') if pd.notna(next_dividend_date) else "N/A"
 
-    # Format UI Strings
-    price_pred_str = "Up" if price_direction == 1 else "Down"
-    div_pred_str = "N/A" if div_direction is None else ("Up" if div_direction == 1 else "Down")
-
-    # Format Percentages
-    price_conf_pct = round(price_conf * 100, 2)
-    div_conf_pct = "N/A" if div_direction is None else round(div_conf * 100, 2)
-    
-    forecasted_yield = (
-        round((forecasted_div / today_close) * 100, 2)
-        if today_close > 0 and forecasted_div != "N/A"
-        else "N/A"
-    )
-
-    # Fetch Company Metadata
-    try:
-        info = yf.Ticker(ticker).info
-        company_name = info.get("longName") or info.get("shortName") or ticker
-    except Exception:
-        company_name = ticker
-
-    # Return fully prepared Data
-    return pd.DataFrame({
-        "Next_Trading_Day":        [next_trading_day_str],
-        "Ticker":                  [ticker],
-        "Company_Name":            [company_name],
-        "Price_Predicted":         [price_pred_str],
-        "Price_Confidence (%)":    [price_conf_pct],
-        "Forecasted_Close":        [forecasted_close],
-        "Next_Dividend_Date":      [next_div_date_str],
-        "Div_Predicted":           [div_pred_str],
-        "Div_Confidence (%)":      [div_conf_pct],
-        "Forecasted_Dividend":     [forecasted_div],
-        "Forecasted_Yield (%)":    [forecasted_yield],
-        "Extended_Forecasts":      [extended_forecasts],
-        "Chart_Future_Dates":      [chart_future_dates],
-        "Chart_Future_Prices":     [chart_future_prices],
-        "Chart_Future_Upper":      [chart_future_upper],
-        "Chart_Future_Lower":      [chart_future_lower],
-        "Train_Fit_Dates":         [train_fit_dates],
-        "Train_Fit_Prices":        [train_fit_prices],
-        "Div_Extended_Forecasts":  [div_extended_forecasts],
-        "Div_Future_Dates":        [div_future_dates],
-        "Div_Future_Amounts":      [div_future_amounts],
-        "Div_Future_Upper":        [div_future_upper],
-        "Div_Future_Lower":        [div_future_lower],
-        "Train_Fit_Div_Dates":     [train_fit_div_dates],
-        "Train_Fit_Div_Amounts":   [train_fit_div_amounts],
-    })
+    # Package the final results from both pipelines
+    return {
+        "anchor_date": anchor_date,
+        "today_close": today_close,
+        "price_direction": price_direction,
+        "price_conf": price_conf,
+        "forecasted_close": forecasted_close,
+        "next_dividend_date": next_dividend_date,
+        "div_direction": div_direction,
+        "div_conf": div_conf,
+        "forecasted_div": forecasted_div,
+        "extended_forecasts": extended_forecasts,
+        "chart_future_dates": chart_future_dates,
+        "chart_future_prices": chart_future_prices,
+        "chart_future_upper": chart_future_upper,
+        "chart_future_lower": chart_future_lower,
+        "train_fit_dates": train_fit_dates,
+        "train_fit_prices": train_fit_prices,
+        "div_extended_forecasts": div_extended_forecasts,
+        "div_future_dates": div_future_dates,
+        "div_future_amounts": div_future_amounts,
+        "div_future_upper": div_future_upper,
+        "div_future_lower": div_future_lower,
+        "train_fit_div_dates": train_fit_div_dates,
+        "train_fit_div_amounts": train_fit_div_amounts,
+    }

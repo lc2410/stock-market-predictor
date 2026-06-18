@@ -188,14 +188,15 @@ def test_fetch_data_success(mock_ticker):
     assert len(_fetch_data("GOOD")) == 1300
 
 # real-time model integration tests
+# real-time model integration tests
 @patch('backend.models.forecast_model._fetch_data')
 def test_run_real_time_model_integration(mock_fetch_data, dummy_stock_data):
     """End-to-End Test: Simulates a perfect pipeline run."""
     mock_fetch_data.return_value = dummy_stock_data
-    result_df = run_real_time_model("TEST", price_window=300, div_window=8)
-    assert result_df is not None
-    assert "Forecasted_Close" in result_df.columns
-    assert result_df["Forecasted_Dividend"].iloc[0] != "N/A"
+    result_dict = run_real_time_model("TEST", price_window=300, div_window=8)
+    assert result_dict is not None
+    assert "forecasted_close" in result_dict
+    assert result_dict["forecasted_div"] != "N/A"
 
 @patch('backend.models.forecast_model._fetch_data')
 def test_run_real_time_model_no_data(mock_fetch_data):
@@ -203,17 +204,11 @@ def test_run_real_time_model_no_data(mock_fetch_data):
     mock_fetch_data.return_value = None
     assert run_real_time_model("TEST") is None
 
-@patch('backend.models.forecast_model.yf.Ticker')
 @patch('backend.models.forecast_model._fetch_data')
-def test_run_real_time_model_no_divs_and_info_err(mock_fetch, mock_ticker, dummy_stock_data):
-    """End-to-End Test: Simulates a non-dividend stock and a crashed Yahoo Finance Info API."""
+def test_run_real_time_model_no_divs(mock_fetch_data, dummy_stock_data):
+    """End-to-End Test: Simulates a non-dividend stock."""
     dummy_stock_data["Dividends"] = 0.0
-    mock_fetch.return_value = dummy_stock_data
+    mock_fetch_data.return_value = dummy_stock_data
     
-    mock_instance = MagicMock()
-    type(mock_instance).info = PropertyMock(side_effect=Exception("API Error"))
-    mock_ticker.return_value = mock_instance
-    
-    res = run_real_time_model("TEST", price_window=300)
-    assert res["Forecasted_Dividend"].iloc[0] == "N/A"
-    assert res["Company_Name"].iloc[0] == "TEST"
+    res = run_real_time_model("TEST", price_window=300, div_window=8)
+    assert res["forecasted_div"] == "N/A"

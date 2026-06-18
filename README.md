@@ -115,6 +115,7 @@ To map out a full year of passive income, the system chains the short-term and m
     ```bash
     python3 -m venv venv
     source venv/bin/activate
+    cd backend
     pip install -r requirements.txt
     ```
 3.  **Run the Local Server:**

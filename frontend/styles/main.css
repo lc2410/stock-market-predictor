@@ -222,6 +222,61 @@ p {
   box-shadow: none;
 }
 
+/* Tabbed Navigation Layout */
+.tabs-container {
+  display: flex;
+  gap: 10px;
+  margin: 24px 0;
+  border-bottom: 1px solid var(--outline-border);
+  padding-bottom: 10px;
+}
+
+.tab-button {
+  background: var(--card-bg);
+  border: 1px solid var(--outline-border);
+  color: var(--text-muted);
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 10px;
+  transition: all 0.2s ease;
+}
+
+.tab-button:hover {
+  background: var(--input-bg);
+  color: var(--text-main);
+  transform: translateY(-1px);
+}
+
+.tab-button.active {
+  background: var(--brand-primary);
+  border-color: var(--brand-primary);
+  color: white;
+}
+
+/* Off-screen canvas layout protection trick */
+.tab-content {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  height: 0;
+  overflow: hidden;
+}
+
+.tab-content.active {
+  position: relative;
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+  height: auto;
+  overflow: visible;
+}
+
 /* Cards and Grids for the Dashboard */
 .dashboard-grid {
   display: grid;
