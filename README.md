@@ -1,11 +1,7 @@
 # Real-Time Stock & Dividend Forecaster
 
 ## Overview
-This project is a full-stack web application designed to bridge the gap between raw financial data and a production-ready forecasting system. It provides a real-time, next-day forecast for a stock closing price alongside an intelligent projection of its next dividend payment. 
-
-The back-end is powered by a custom-built machine learning ensemble utilizing Python and Scikit-learn. A Flask web framework serves the data. The front-end delivers a clean, responsive, and highly interactive interface built with HTML, CSS, vanilla JavaScript, and Chart.js. 
-
-Designed for high-velocity execution and scalability, the application operates on a monolithic client-server architecture deployed on a custom-provisioned Oracle Cloud Infrastructure (OCI) environment. The deployment is fully managed by Infrastructure as Code (IaC) and an automated CI/CD pipeline.
+Stock trading is a complex process for both short and long-term investors, particularly in highly volatile market conditions. This application is meant to help those who are afraid of getting into the market blindly by delivering real-time market data and predictive insights into publicly traded assets like ETFs, index funds, and/or individual stocks. By combining automated data ingestion, advanced machine learning techniques, and AI sentiment analysis into an intuitive interface, the platform empowers users to confidently evaluate assets and make data-driven investment decisions.
 
 ---
 
@@ -47,17 +43,16 @@ stock-market-predictor/
 ---
 
 ## Core Features
-* **Smart Search Autocomplete:** A debounced, native search bar that proxies Yahoo Finance query API through the Flask backend to provide live, CORS-friendly ticker autocomplete.
-* **Interactive Charting Engine:** A custom Chart.js interface featuring a draggable time-navigator. Users can pan and zoom seamlessly across historical market data. The chart visually explores the projected future trajectories alongside historical and in-sample prediction tooltips. The system perfectly aligns current day in-sample predictions without temporal gaps.
-* **Historical Data Tables:** Automatically generates clean, scrollable trailing-year data tables for both daily closing prices and recent ex-dividend payouts.
-* **Dual Forecasting Pipelines:** Independently predicts the next-day stock price (direction and magnitude) and the next projected dividend payout (amount and date) using isolated ML logic.
-* **Robust Temporal Logic:** The app uses the `pandas` `CustomBusinessDay` module combined with the US Federal Holiday Calendar to accurately project exact future trading dates by skipping weekends and market closures.
-* **Calibrated Confidence:** Raw machine learning models often output arbitrary scores. This app passes its directional predictions through an Isotonic `CalibratedClassifierCV` to ensure the UI reports statistically accurate, real-world confidence percentages.
+* **Searching for a Publicly Traded Asset:** A debounced, native search bar that proxies the Yahoo Finance query API through the Flask backend. This provides live, CORS-friendly autocomplete and allows users to search across a vast universe of publicly traded assets, including standard equities, ETFs, Mutual Funds, Cryptocurrencies, Market Indices, and specialized assets like REITs and CEFs.
+* **Sentiment Grading Analysis on Publicly Traded Assets:** The system synthesizes quantitative ML outputs, Wall Street consensus ratings, fundamental metrics (like EPS, Beta, Market Cap, and Yield), and NLP-driven news sentiment to assign an overarching AI Stock Grade (A+ through F) and a General Sentiment (Bullish/Bearish/Neutral). It dynamically adapts its grading criteria based on the asset class, ensuring funds or cryptocurrencies aren't penalized for lacking traditional corporate metrics. For ETFs and Mutual Funds, it also dynamically extracts and visualizes the top 10 holdings and economic sector exposures using clean UI progress bars.
+* **Closed Price Forecasting Summary:** Delivers a clear breakdown of the next trading day's predicted price direction, magnitude, and statistical confidence. This is paired with an interactive Chart.js engine featuring a draggable time-navigator, allowing users to seamlessly pan and zoom across historical market data and view 1-week, 1-month, and 1-year future trajectories bounded by a 95% confidence interval. A unified, scrollable data table provides a clean view of trailing-year historical prices alongside the future projections.
+* **Dividend Payout Forecasting Summary:** Automatically determines if an asset pays dividends and projects the exact date, direction, and amount of the next payout. It features an interactive bar chart visualizing historical payouts against the projected next four payout cycles, complete with calculated 95% margin of error bounds. A dedicated data table organizes these historical and forecasted ex-dividend dates and amounts.
+* **Light/Dark Modes:** A native, fully integrated theme manager that allows users to toggle between a clean light mode and a deep dark mode, dynamically updating the CSS variables, UI components, and Chart.js canvases on the fly without requiring a page reload.
 
 ---
 
 ## The Machine Learning Process
-The forecasting engine abandons simple linear models in favor of dynamic feature engineering, aggressive noise reduction, and an ensemble architecture designed to minimize variance and prevent overfitting.
+The forecasting engine abandons simple linear models to embrace a holistic, multi-modal approach. By combining dynamic feature engineering, aggressive noise reduction, and a Dual Forecasting Pipeline designed to prevent statistical overfitting, the system simultaneously routes live media data through a specialized NLP Sentiment Analysis layer. This allows the algorithm to synthesize raw price action with real-time market sentiment for a highly calibrated forecast.
 
 ### 1. Data Collection & Structuring
 Upon receiving a ticker symbol, the `yfinance` library retrieves the maximum available daily price and dividend history dating back to 2010. This raw data is immediately cleaned, indexed, and prepared for quantitative analysis.
@@ -100,6 +95,13 @@ Corporate dividends are structured, board-approved payouts rather than market-dr
 
 #### The Long-Term Trajectory Engine
 To map out a full year of passive income, the system chains the short-term and macro models together. By specifically anchoring off the next predicted payout, this module forecasts the exact dollar amount of the 2nd, 3rd, and 4th future payout cycles using horizon-specific Random Forest algorithms. The multi-cycle trajectory is bounded by a dynamic 95% Margin of Error band derived from historical payout volatility.
+
+### 5. Natural Language Processing (NLP) Sentiment Analysis
+The backend utilizes the HuggingFace `transformers` library to load the `ProsusAI/finbert` NLP model into memory. It scrapes the most recent news headlines for the searched asset and processes them through the neural network to determine positive or negative catalysts. This calculates a weighted AI sentiment score and extracts the specific bullish/bearish headlines to display in the UI's reasoning block.
+
+### 6. Other Algorithmic Enhancements
+* **Robust Temporal Logic:** The application uses the `pandas` `CustomBusinessDay` module combined with the US Federal Holiday Calendar to accurately project exact future trading dates by skipping weekends and market closures.
+* **Calibrated Confidence:** Raw machine learning models often output arbitrary scores. This app passes its directional predictions through an Isotonic `CalibratedClassifierCV` to ensure the UI reports statistically accurate, real-world confidence percentages.
 
 ---
 
