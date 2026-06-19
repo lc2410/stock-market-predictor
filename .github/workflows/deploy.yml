@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [ main ]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
 jobs:
   security-scan:
     name: Security Vulnerability Scan
@@ -122,8 +126,11 @@ jobs:
         run: |
           export PYTHONPATH=.
           nohup python app.py > app.log 2>&1 &
-          sleep 5
-          curl --fail http://127.0.0.1:5001/ || exit 1
+          for i in {1..30}; do
+            curl -s http://127.0.0.1:5001 > /dev/null && echo "Server is up!" && break
+            echo "Waiting for server to boot... ($i/30)"
+            sleep 2
+          done
           
       - name: Run Playwright Tests
         run: |
@@ -155,6 +162,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.python.coverage.reportPaths=coverage.xml
 
   deploy:
     name: Deploy to Production

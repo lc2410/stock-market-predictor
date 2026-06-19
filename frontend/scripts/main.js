@@ -228,21 +228,166 @@ const UIManager = {
     
     const divRows = Array.from(dMap.values()).sort((a, b) => new Date(b.date) - new Date(a.date));
 
+    const getGradeColor = (grade) => grade.includes('A') || grade.includes('B') ? 'up' : (grade.includes('D') || grade.includes('F') ? 'down' : '');
+    const getSentimentColor = (sentiment) => sentiment === 'Bullish' ? 'up' : (sentiment === 'Bearish' ? 'down' : '');
+
+    // Render Tabbed UI skeleton structure
     Elements.resultContainer.innerHTML = `
-      <h2 class="section-heading" style="margin-top: 10px;">${data.Company_Name} <span style="color:var(--text-muted);font-weight:600;">(${data.Ticker})</span></h2>
-      <h3 class="subsection-heading" style="margin-top: 0; padding-bottom: 8px; border-bottom: 2px solid var(--outline-border);">Closed Stock Price Forecast</h3>
+      <h2 class="section-heading" style="margin-top: 10px; border-bottom: none; margin-bottom: 0; padding-bottom: 0;">
+        ${data.Company_Name} <span style="color:var(--text-muted);font-weight:600;">(${data.Ticker})</span>
+      </h2>
       
-      ${this._buildPriceMetrics(data)}
-      ${this._buildPriceChartsHTML()}
-      ${this._buildUnifiedTable("Closed Stock Price History & Forecast Data with 95% Confidence Interval", "Trading Date", "Historical Price", "Projected Price", priceRows)}
-      
-      <h3 class="subsection-heading" style="margin-top: 56px; padding-bottom: 8px; border-bottom: 2px solid var(--outline-border);">Dividend Forecast</h3>
-      ${this._buildDividendMetrics(data, hasDividends)}
-      ${this._buildDividendChartHTML(hasDividends)}
-      ${hasDividends ? this._buildUnifiedTable("Dividend Payout History & Forecast Data with 95% Confidence Interval", "Ex-Dividend Date", "Historical Payout", "Projected Payout", divRows) : ''}
+      <div class="tabs-container">
+        <button class="tab-button active" data-tab="sentiment">Sentiment Analysis</button>
+        <button class="tab-button" data-tab="price">Price Forecast</button>
+        <button class="tab-button" data-tab="dividend">Dividend Forecast</button>
+      </div>
+
+      <!-- Tab Content Panels -->
+      <div id="tab-sentiment" class="tab-content active">
+        <div class="dashboard-grid" style="margin-top: 10px; margin-bottom: 16px;">
+          ${this._card("AI Stock Grade", data.Stock_Grade, getGradeColor(data.Stock_Grade))}
+          ${this._card("General Sentiment", data.News_Sentiment, getSentimentColor(data.News_Sentiment))}
+        </div>
+        <div style="background: rgba(var(--brand-rgb), 0.05); border: 1px solid rgba(var(--brand-rgb), 0.2); border-left: 4px solid rgba(var(--brand-rgb), 1); padding: 16px; border-radius: 8px; margin-bottom: 20px; font-size: 14px; line-height: 1.6;">
+          <strong style="color: var(--text-main); display: block; margin-bottom: 6px;">AI Sentiment Reasoning:</strong>
+          ${this._buildReasoningHTML(data.AI_Reasoning)}
+        </div>
+      </div>
+
+      <div id="tab-price" class="tab-content">
+        ${this._buildPriceMetrics(data)}
+        ${this._buildPriceChartsHTML()}
+        ${this._buildUnifiedTable("Closed Stock Price History & Forecast Data with 95% Confidence Interval", "Trading Date", "Historical Price", "Projected Price", priceRows)}
+      </div>
+
+      <div id="tab-dividend" class="tab-content">
+        ${this._buildDividendMetrics(data, hasDividends)}
+        ${this._buildDividendChartHTML(hasDividends)}
+        ${hasDividends ? this._buildUnifiedTable("Dividend Payout History & Forecast Data with 95% Confidence Interval", "Ex-Dividend Date", "Historical Payout", "Projected Payout", divRows) : ''}
+      </div>
     `;
 
+    // Initialize Interactive Tab Controllers
+    const tabButtons = Elements.resultContainer.querySelectorAll('.tab-button');
+    const tabContents = Elements.resultContainer.querySelectorAll('.tab-content');
+
+    tabButtons.forEach(button => {
+      button.addEventListener('click', () => {
+        const targetTab = button.getAttribute('data-tab');
+
+        // Toggle Active Button Styling state
+        tabButtons.forEach(btn => btn.classList.remove('active'));
+        button.classList.add('active');
+
+        // Toggle Visibility Panels
+        tabContents.forEach(content => content.classList.remove('active'));
+        const activeContent = Elements.resultContainer.querySelector(`#tab-${targetTab}`);
+        activeContent.classList.add('active');
+
+        // Force Chart engine layout checks upon switching panels to guarantee smooth layout shifts
+        if (targetTab === 'price' && ChartManager.instances.price) {
+          ChartManager.instances.price.resize();
+          ChartManager.instances.nav.resize();
+        } else if (targetTab === 'dividend' && ChartManager.instances.dividend) {
+          ChartManager.instances.dividend.resize();
+        }
+      });
+    });
+
     if (data.Chart_History) setTimeout(() => ChartManager.renderAll(data), 150);
+  },
+
+  _buildReasoningHTML(reasoning) {
+    if (!reasoning || typeof reasoning === 'string') {
+      return `<span style="color: var(--text-muted);">${reasoning || 'No recent data available.'}</span>`;
+    }
+
+    let html = '';
+
+    // Render News Sentiment
+    if (reasoning.news) {
+      if (reasoning.news.positive && reasoning.news.positive.length > 0) {
+        const items = reasoning.news.positive.map(h => `<li style="margin-bottom: 6px;">"${h}"</li>`).join('');
+        html += `<div style="margin-bottom: 12px;"><strong style="color: var(--brand-success);">Positive Press:</strong><ul style="margin-top: 4px; padding-left: 24px; list-style-type: disc;">${items}</ul></div>`;
+      }
+      if (reasoning.news.negative && reasoning.news.negative.length > 0) {
+        const items = reasoning.news.negative.map(h => `<li style="margin-bottom: 6px;">"${h}"</li>`).join('');
+        html += `<div style="margin-bottom: 12px;"><strong style="color: var(--brand-danger);">Negative Press:</strong><ul style="margin-top: 4px; padding-left: 24px; list-style-type: disc;">${items}</ul></div>`;
+      }
+      if (reasoning.news.neutral) {
+        html += `<div style="margin-bottom: 12px;"><span style="color: var(--text-muted);">${reasoning.news.neutral}</span></div>`;
+      }
+    }
+
+    // Render Fundamental Catalysts
+    if (reasoning.fundamentals) {
+      if (reasoning.fundamentals.positive && reasoning.fundamentals.positive.length > 0) {
+        const items = reasoning.fundamentals.positive.map(f => `<li style="margin-bottom: 6px;">${f}</li>`).join('');
+        html += `<div style="margin-top: 16px;"><strong style="color: var(--brand-success);">General Strengths:</strong><ul style="margin-top: 6px; padding-left: 24px; list-style-type: disc;">${items}</ul></div>`;
+      }
+      if (reasoning.fundamentals.negative && reasoning.fundamentals.negative.length > 0) {
+        const items = reasoning.fundamentals.negative.map(f => `<li style="margin-bottom: 6px;">${f}</li>`).join('');
+        html += `<div style="margin-top: 16px;"><strong style="color: var(--brand-danger);">General Risks:</strong><ul style="margin-top: 6px; padding-left: 24px; list-style-type: disc;">${items}</ul></div>`;
+      }
+    }
+
+    // Render ETF Holdings with Progress Bars (Mockup Layout)
+    if (reasoning.etf_holdings && reasoning.etf_holdings.length > 0) {
+      const items = reasoning.etf_holdings.map((h, index) => {
+        const nameDisplay = h.name !== h.symbol ? `${h.name} (${h.symbol})` : h.symbol;
+        const pctValue = parseFloat(h.weight) || 0;
+        
+        return `
+          <div style="margin-bottom: 14px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; font-size: 13px;">
+              <span style="color: var(--text-main); font-weight: 500;">
+                <span style="color: var(--text-muted); margin-right: 4px;">${index + 1}.</span> ${nameDisplay}
+              </span>
+              <span style="color: var(--text-main); font-weight: 600; font-family: monospace;">${h.weight || '0.00%'}</span>
+            </div>
+            <div style="width: 100%; height: 6px; background: rgba(255, 255, 255, 0.08); border-radius: 3px; overflow: hidden;">
+              <div style="width: ${pctValue}%; height: 100%; background: var(--brand-primary); border-radius: 3px; transition: width 0.4s ease;"></div>
+            </div>
+          </div>
+        `;
+      }).join('');
+      
+      html += `
+        <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid rgba(var(--brand-rgb), 0.15);">
+          <strong style="color: var(--text-main); display: block; margin-bottom: 14px;">Top 10 Fund Holdings by Weight:</strong>
+          <div style="display: flex; flex-direction: column;">${items}</div>
+        </div>
+      `;
+    }
+
+    // Render ETF Sectors with Progress Bars (Mockup Layout)
+    if (reasoning.etf_sectors && reasoning.etf_sectors.length > 0) {
+      const items = reasoning.etf_sectors.map(s => {
+        const pctValue = parseFloat(s.weight) || 0;
+        
+        return `
+          <div style="margin-bottom: 14px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; font-size: 13px;">
+              <span style="color: var(--text-main); font-weight: 500;">${s.sector}</span>
+              <span style="color: var(--text-main); font-weight: 600; font-family: monospace;">${s.weight || '0.00%'}</span>
+            </div>
+            <div style="width: 100%; height: 6px; background: rgba(255, 255, 255, 0.08); border-radius: 3px; overflow: hidden;">
+              <div style="width: ${pctValue}%; height: 100%; background: linear-gradient(90deg, var(--brand-primary), rgba(var(--brand-rgb), 0.7)); border-radius: 3px; transition: width 0.4s ease;"></div>
+            </div>
+          </div>
+        `;
+      }).join('');
+      
+      html += `
+        <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid rgba(var(--brand-rgb), 0.15);">
+          <strong style="color: var(--text-main); display: block; margin-bottom: 14px;">Economic Sector Exposure:</strong>
+          <div style="display: flex; flex-direction: column;">${items}</div>
+        </div>
+      `;
+    }
+
+    return html || '<span style="color: var(--text-muted);">No recent data available.</span>';
   },
 
   _buildPriceMetrics(data) {
