@@ -75,29 +75,6 @@ def build_frontend_payload(ticker, raw_ml_data, chart_history, nlp_data, info, i
         "Chart_History": chart_history
     }
 
-@api_bp.route('/')
-def home():
-    return render_template('index.html')
-
-@api_bp.route('/search/<string:query>', methods=['GET'])
-def search(query):
-    """Proxy Yahoo Finance autocomplete to bypass browser CORS restrictions."""
-    try:
-        url = f"https://query2.finance.yahoo.com/v1/finance/search?q={query}&quotesCount=5&newsCount=0"
-        headers = {'User-Agent': 'Mozilla/5.0'}
-        response = requests.get(url, headers=headers)
-        data = response.json()
-        
-        quotes = data.get('quotes', [])
-        results = [
-            {"symbol": q.get("symbol"), "name": q.get("shortname", "")} 
-            for q in quotes if "symbol" in q
-        ]
-        return jsonify(results)
-    except Exception as e:
-        logger.error(f"Search API error: {e}")
-        return jsonify([])
-
 def _fetch_company_fundamentals(safe_ticker):
     """Helper to fetch company info, determine asset type, and extract fund holdings/sectors if applicable."""
     stock_obj = yf.Ticker(safe_ticker)
@@ -142,6 +119,29 @@ def _fetch_company_fundamentals(safe_ticker):
             logger.warning(f"Failed to parse Fund data: {e}")
             
     return info, is_fund, is_crypto, top_holdings, top_sectors
+
+@api_bp.route('/')
+def home():
+    return render_template('index.html')
+
+@api_bp.route('/search/<string:query>', methods=['GET'])
+def search(query):
+    """Proxy Yahoo Finance autocomplete to bypass browser CORS restrictions."""
+    try:
+        url = f"https://query2.finance.yahoo.com/v1/finance/search?q={query}&quotesCount=5&newsCount=0"
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        response = requests.get(url, headers=headers)
+        data = response.json()
+        
+        quotes = data.get('quotes', [])
+        results = [
+            {"symbol": q.get("symbol"), "name": q.get("shortname", "")} 
+            for q in quotes if "symbol" in q
+        ]
+        return jsonify(results)
+    except Exception as e:
+        logger.error(f"Search API error: {e}")
+        return jsonify([])
 
 @api_bp.route('/predict/<string:ticker>', methods=['GET'])
 @cached(cache=forecast_cache)

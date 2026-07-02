@@ -1,8 +1,7 @@
 import pytest
-from pytest import approx
 import pandas as pd
 import numpy as np
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 from backend.models.forecast_model import (
     _engineer_price_features, 
     _train_multi_horizon_price,

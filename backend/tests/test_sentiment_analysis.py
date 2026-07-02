@@ -1,4 +1,3 @@
-import pytest
 from backend.models.sentiment_analysis import analyze_news_sentiment, calculate_asset_grade
 from unittest.mock import patch, MagicMock
 
