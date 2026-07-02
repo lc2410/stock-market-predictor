@@ -117,7 +117,7 @@ def test_get_chart_data_success():
     assert len(data["dividend_dates"]) == 1
 
 def test_run_real_time_model_integration(dummy_stock_data):
-    with patch("backend.models.forecast_model._fetch_data", return_value=(dummy_stock_data, dummy_stock_data, 300)):
+    with patch("backend.models.forecast_model._fetch_data", return_value=(dummy_stock_data, dummy_stock_data)):
         res = run_real_time_model("TEST", price_window=300, div_window=25)
         assert res is not None
         assert "price_forecasts" in res
@@ -126,7 +126,7 @@ def test_run_real_time_model_integration(dummy_stock_data):
         assert len(res["chart_future_dates"]) == 252 # US business days
 
 def test_run_real_time_model_no_data():
-    with patch("backend.models.forecast_model._fetch_data", return_value=(None, None, None)):
+    with patch("backend.models.forecast_model._fetch_data", return_value=(None, None)):
         res = run_real_time_model("TEST")
         assert res is None
 
@@ -153,7 +153,7 @@ def test_fetch_data_empty(mock_ticker):
     mock_instance.history.return_value = pd.DataFrame()
     mock_ticker.return_value = mock_instance
     
-    price, div, window = _fetch_data("EMPTY")
+    price, div = _fetch_data("EMPTY", 1260)
     assert price is None
     assert div is None
 
@@ -164,7 +164,7 @@ def test_fetch_data_insufficient(mock_ticker):
     mock_instance.history.return_value = pd.DataFrame({"Close": [100.0, 101.0], "Dividends": [0.0, 0.0]}, index=pd.date_range("2020-01-01", periods=2))
     mock_ticker.return_value = mock_instance
     
-    price, div, window = _fetch_data("TINY")
+    price, div = _fetch_data("TINY", 1260)
     # Will hit the len(data) < expected_days break, but len(data) == 2 so it returns the data for downstream handling
     assert price is not None
     assert len(price) == 2
@@ -175,7 +175,7 @@ def test_fetch_data_one_row(mock_ticker):
     mock_instance.history.return_value = pd.DataFrame({"Close": [100.0], "Dividends": [0.0]}, index=pd.date_range("2020-01-01", periods=1))
     mock_ticker.return_value = mock_instance
     
-    price, div, window = _fetch_data("ONE")
+    price, div = _fetch_data("ONE", 1260)
     # Will hit len(data) < 2
     assert price is None
 
@@ -194,7 +194,7 @@ def test_fetch_data_full_loop_and_dividends_slice(mock_ticker):
     mock_instance.history.side_effect = [df_5y, df_10y]
     mock_ticker.return_value = mock_instance
     
-    price, div, window = _fetch_data("LOOP")
+    price, div = _fetch_data("LOOP", 1260)
     assert price is not None
     assert div is not None
     # Verifies price was sliced to min_required_days
@@ -225,7 +225,7 @@ def test_train_multi_horizon_div_insufficient_data(dummy_stock_data):
     assert len(t_dates) == 0
 
 def test_run_real_time_model_crypto_path(dummy_stock_data):
-    with patch("backend.models.forecast_model._fetch_data", return_value=(dummy_stock_data, dummy_stock_data, 500)):
+    with patch("backend.models.forecast_model._fetch_data", return_value=(dummy_stock_data, dummy_stock_data)):
         res = run_real_time_model("BTC-USD", price_window=500, div_window=25, is_crypto=True)
         assert res is not None
         # Crypto model returns 365 days of future dates instead of 252 business days

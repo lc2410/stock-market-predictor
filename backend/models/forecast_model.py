@@ -71,7 +71,7 @@ def _fetch_data(ticker, target_window, is_crypto=False):
         data = stock_ticker.history(period=f"{years_to_fetch}y")
         
         if data.empty:
-            return None, None, None
+            return None, None
             
         data.index = pd.to_datetime(data.index).tz_localize(None).normalize()
         data = data[~data.index.duplicated(keep='last')]
@@ -99,7 +99,7 @@ def _fetch_data(ticker, target_window, is_crypto=False):
         years_to_fetch += 5
 
     if data is None or len(data) < 2:
-        return None, None, None
+        return None, None
         
     # Isolate recent data for the price model to minimize computation
     if len(data) >= min_required_days:
