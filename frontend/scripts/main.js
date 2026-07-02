@@ -148,7 +148,7 @@ const UIManager = {
   },
 
   renderDashboard(data) {
-    const hasDividends = data.Next_Dividend_Date !== 'N/A';
+    const hasDividends = data.Chart_History?.dividend_dates && data.Chart_History.dividend_dates.length > 0;
     
     // Standardizes incoming timestamps to YYYY-MM-DD for reliable Map indexing
     const normalizeDate = (isoString) => {
@@ -158,10 +158,8 @@ const UIManager = {
 
     // Build Unified Price Rows
     const pMap = new Map();
-    let oldestPriceTs = 0;
 
     if (data.Chart_History?.dates && data.Chart_History.dates.length > 0) {
-      oldestPriceTs = new Date(normalizeDate(data.Chart_History.dates[0])).getTime();
       data.Chart_History.dates.forEach((d, i) => {
         const k = normalizeDate(d);
         pMap.set(k, { date: k, hist: data.Chart_History.prices[i], proj: null, lower: null, upper: null });
@@ -171,8 +169,6 @@ const UIManager = {
     if (data.Train_Fit_Dates) {
       data.Train_Fit_Dates.forEach((d, i) => {
         const k = normalizeDate(d);
-        if (new Date(k).getTime() < oldestPriceTs) return; 
-        
         if (!pMap.has(k)) pMap.set(k, { date: k, hist: null, proj: null, lower: null, upper: null });
         
         const price = data.Train_Fit_Prices[i];
@@ -195,10 +191,8 @@ const UIManager = {
 
     // Build Unified Dividend Rows
     const dMap = new Map();
-    let oldestDivTs = 0;
 
     if (data.Chart_History?.dividend_dates && data.Chart_History.dividend_dates.length > 0) {
-      oldestDivTs = new Date(normalizeDate(data.Chart_History.dividend_dates[0])).getTime();
       data.Chart_History.dividend_dates.forEach((d, i) => {
         const k = normalizeDate(d);
         dMap.set(k, { date: k, hist: data.Chart_History.dividend_amounts[i], proj: null, lower: null, upper: null });
@@ -208,8 +202,6 @@ const UIManager = {
     if (data.Train_Fit_Div_Dates) {
       data.Train_Fit_Div_Dates.forEach((d, i) => {
         const k = normalizeDate(d);
-        if (new Date(k).getTime() < oldestDivTs) return; 
-        
         if (!dMap.has(k)) dMap.set(k, { date: k, hist: null, proj: null, lower: null, upper: null });
         dMap.get(k).proj = data.Train_Fit_Div_Amounts[i];
       });
@@ -246,7 +238,7 @@ const UIManager = {
       <!-- Tab Content Panels -->
       <div id="tab-sentiment" class="tab-content active">
         <div class="dashboard-grid" style="margin-top: 10px; margin-bottom: 16px;">
-          ${this._card("AI Stock Grade", data.Stock_Grade, getGradeColor(data.Stock_Grade))}
+          ${this._card("Grade", data.Stock_Grade, getGradeColor(data.Stock_Grade))}
           ${this._card("General Sentiment", data.News_Sentiment, getSentimentColor(data.News_Sentiment))}
         </div>
         <div style="background: rgba(var(--brand-rgb), 0.05); border: 1px solid rgba(var(--brand-rgb), 0.2); border-left: 4px solid rgba(var(--brand-rgb), 1); padding: 16px; border-radius: 8px; margin-bottom: 20px; font-size: 14px; line-height: 1.6;">
@@ -258,13 +250,13 @@ const UIManager = {
       <div id="tab-price" class="tab-content">
         ${this._buildPriceMetrics(data)}
         ${this._buildPriceChartsHTML()}
-        ${this._buildUnifiedTable("Closed Stock Price History & Forecast Data with 95% Confidence Interval", "Trading Date", "Historical Price", "Projected Price", priceRows)}
+        ${this._buildUnifiedTable("Closed Stock Price History & Forecast Data with Expected Range", "Trading Date", "Historical Price", "Projected Price", priceRows)}
       </div>
 
       <div id="tab-dividend" class="tab-content">
         ${this._buildDividendMetrics(data, hasDividends)}
         ${this._buildDividendChartHTML(hasDividends)}
-        ${hasDividends ? this._buildUnifiedTable("Dividend Payout History & Forecast Data with 95% Confidence Interval", "Ex-Dividend Date", "Historical Payout", "Projected Payout", divRows) : ''}
+        ${hasDividends ? this._buildUnifiedTable("Dividend Payout History & Forecast Data with Expected Range", "Ex-Dividend Date", "Historical Payout", "Projected Payout", divRows) : ''}
       </div>
     `;
 
@@ -307,12 +299,34 @@ const UIManager = {
 
     // Render News Sentiment
     if (reasoning.news) {
+      const generateNewsHTML = (h) => {
+        // Safe string escaping for HTML injection
+        const safeTitle = (h.title || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        const safeSummary = (h.summary || 'No summary available.').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        const safePublisher = (h.publisher || 'Unknown Publisher').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        const safeUrl = (h.url || '#').replace(/"/g, '&quot;');
+
+        return `<li style="margin-bottom: 6px;">
+            <span class="news-item-link" 
+                  onclick="NewsModal.open('${safeTitle}', '${safeSummary}', '${safePublisher}', '${safeUrl}')">
+                "${h.title || h}"
+            </span>
+            <a href="${safeUrl}" target="_blank" class="news-export-inline" title="Read external article">
+                <svg class="export-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                    <polyline points="15 3 21 3 21 9"></polyline>
+                    <line x1="10" y1="14" x2="21" y2="3"></line>
+                </svg>
+            </a>
+        </li>`;
+      };
+
       if (reasoning.news.positive && reasoning.news.positive.length > 0) {
-        const items = reasoning.news.positive.map(h => `<li style="margin-bottom: 6px;">"${h}"</li>`).join('');
+        const items = reasoning.news.positive.map(generateNewsHTML).join('');
         html += `<div style="margin-bottom: 12px;"><strong style="color: var(--brand-success);">Positive Press:</strong><ul style="margin-top: 4px; padding-left: 24px; list-style-type: disc;">${items}</ul></div>`;
       }
       if (reasoning.news.negative && reasoning.news.negative.length > 0) {
-        const items = reasoning.news.negative.map(h => `<li style="margin-bottom: 6px;">"${h}"</li>`).join('');
+        const items = reasoning.news.negative.map(generateNewsHTML).join('');
         html += `<div style="margin-bottom: 12px;"><strong style="color: var(--brand-danger);">Negative Press:</strong><ul style="margin-top: 4px; padding-left: 24px; list-style-type: disc;">${items}</ul></div>`;
       }
       if (reasoning.news.neutral) {
@@ -390,60 +404,119 @@ const UIManager = {
     return html || '<span style="color: var(--text-muted);">No recent data available.</span>';
   },
 
-  _buildPriceMetrics(data) {
+  _largeCard(title, dateStr, dir, dirConf, amtTitle, amt, amtLower, amtUpper, dirLabel = "Predicted Direction (vs. Last Recorded Price)") {
+    const isUp = dir === "Up";
+    const dirClass = isUp ? "pill-up" : "pill-down";
+    const arrowIcon = isUp ? '↑' : '↓';
+
     return `
-      <h3 class="subsection-heading" style="margin-top: 20px;">Next-Day Metrics</h3>
-      <div class="dashboard-grid">
-        ${this._card("Next Trading Day", Utils.formatDate(data.Next_Trading_Day))}
-        ${this._card("Direction", data.Price_Predicted, data.Price_Predicted.toLowerCase())}
-        ${this._card("Confidence", `${data['Price_Confidence (%)']}%`)}
-        ${this._card("Forecasted Close", Utils.formatMoney(data.Forecasted_Close))}
+      <div class="premium-horizon-card">
+        <div class="horizon-header">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <h4 class="horizon-title">${title}</h4>
+          </div>
+          <div class="horizon-date-badge">${Utils.formatDate(dateStr)}</div>
+        </div>
+        <div class="horizon-body">
+          <div class="stat-box">
+            <span class="stat-label">${dirLabel}</span>
+            <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+              <span class="direction-pill ${dirClass}">${arrowIcon} ${dir}</span>
+              <span class="conf-badge">${dirConf}% Conf.</span>
+            </div>
+          </div>
+          <div class="stat-divider"></div>
+          <div class="stat-box">
+            <span class="stat-label">${amtTitle}</span>
+            <div style="display: flex; align-items: baseline; gap: 8px; margin-top: 4px;">
+              <span class="stat-val">${Utils.formatMoney(amt)}</span>
+              <span class="conf-badge">Range: ${Utils.formatMoney(amtLower)} &ndash; ${Utils.formatMoney(amtUpper)}</span>
+            </div>
+          </div>
+        </div>
       </div>
-      <h3 class="subsection-heading">Long-Term Projections</h3>
-      <div class="dashboard-grid">
-        ${this._card(`1 Week (${Utils.formatDate(data.Extended_Forecasts['1_Week'].Date)})`, Utils.formatMoney(data.Extended_Forecasts['1_Week'].Price))}
-        ${this._card(`1 Month (${Utils.formatDate(data.Extended_Forecasts['1_Month'].Date)})`, Utils.formatMoney(data.Extended_Forecasts['1_Month'].Price))}
-        ${this._card(`1 Year (${Utils.formatDate(data.Extended_Forecasts['1_Year'].Date)})`, Utils.formatMoney(data.Extended_Forecasts['1_Year'].Price))}
+    `;
+  },
+
+  _buildPriceMetrics(data) {
+    const f = data.Price_Forecasts;
+    if (!f || Object.keys(f).length === 0) {
+      return '<div class="metric-card" style="text-align: center; color: var(--text-muted); font-style: italic; margin-top: 20px; margin-bottom: 32px;">Not enough closed stock price data to generate reliable forecasts.</div>';
+    }
+    
+    const isCrypto = data.Chart_Future_Dates.length === 365;
+    const d1 = data.Chart_Future_Dates[0];
+    const d2 = data.Chart_Future_Dates[isCrypto ? 6 : 4];
+    const d3 = data.Chart_Future_Dates[isCrypto ? 29 : 20];
+    const d4 = data.Chart_Future_Dates[isCrypto ? 89 : 62];
+    const d5 = data.Chart_Future_Dates[isCrypto ? 179 : 125];
+    const d6 = data.Chart_Future_Dates[isCrypto ? 269 : 188];
+    const d7 = data.Chart_Future_Dates[data.Chart_Future_Dates.length - 1];
+
+    return `
+      <div style="display: flex; flex-direction: column; gap: 16px; margin-top: 20px; margin-bottom: 32px;">
+        ${this._largeCard("Next-Day Metrics", d1, f.Next_Day.Direction, f.Next_Day.Direction_Confidence, "Forecasted Close", f.Next_Day.Amount, f.Next_Day.Amount_Lower, f.Next_Day.Amount_Upper)}
+        ${this._largeCard("Next-Week Metrics", d2, f.Next_Week.Direction, f.Next_Week.Direction_Confidence, "Forecasted Close", f.Next_Week.Amount, f.Next_Week.Amount_Lower, f.Next_Week.Amount_Upper)}
+        ${this._largeCard("Next-Month Metrics", d3, f.Next_Month.Direction, f.Next_Month.Direction_Confidence, "Forecasted Close", f.Next_Month.Amount, f.Next_Month.Amount_Lower, f.Next_Month.Amount_Upper)}
+        ${this._largeCard("Next-3-Months Metrics", d4, f.Next_3_Months.Direction, f.Next_3_Months.Direction_Confidence, "Forecasted Close", f.Next_3_Months.Amount, f.Next_3_Months.Amount_Lower, f.Next_3_Months.Amount_Upper)}
+        ${this._largeCard("Next-6-Months Metrics", d5, f.Next_6_Months.Direction, f.Next_6_Months.Direction_Confidence, "Forecasted Close", f.Next_6_Months.Amount, f.Next_6_Months.Amount_Lower, f.Next_6_Months.Amount_Upper)}
+        ${this._largeCard("Next-9-Months Metrics", d6, f.Next_9_Months.Direction, f.Next_9_Months.Direction_Confidence, "Forecasted Close", f.Next_9_Months.Amount, f.Next_9_Months.Amount_Lower, f.Next_9_Months.Amount_Upper)}
+        ${this._largeCard("Next-Year Metrics", d7, f.Next_Year.Direction, f.Next_Year.Direction_Confidence, "Forecasted Close", f.Next_Year.Amount, f.Next_Year.Amount_Lower, f.Next_Year.Amount_Upper)}
       </div>
     `;
   },
 
   _buildDividendMetrics(data, hasDividends) {
-    if (!hasDividends) return `<div class="metric-card" style="text-align: center; color: var(--text-muted); font-style: italic;">This company does not currently pay dividends.</div>`;
-    const divExt = data.Div_Extended_Forecasts || {};
+    if (!hasDividends) {
+      return `<div class="metric-card" style="text-align: center; color: var(--text-muted); font-style: italic; margin-top: 20px; margin-bottom: 32px;">This publicly traded asset does not currently pay dividends.</div>`;
+    }
     
+    if (!data.Div_Forecasts || Object.keys(data.Div_Forecasts).length === 0) {
+      return `<div class="metric-card" style="text-align: center; color: var(--text-muted); font-style: italic; margin-top: 20px; margin-bottom: 32px;">Not enough historical dividend data to generate reliable forecasts.</div>`;
+    }
+    
+    const f = data.Div_Forecasts;
+    const dates = data.Div_Future_Dates;
+    const d1 = dates[0];
+    const d2 = dates.length > 1 ? dates[1] : 'N/A';
+    const d3 = dates.length > 2 ? dates[2] : 'N/A';
+    const d4 = dates.length > 3 ? dates[3] : 'N/A';
+    const d5 = dates.length > 4 ? dates[4] : 'N/A';
+
     return `
-      <h3 class="subsection-heading" style="margin-top: 20px;">Next-Day Metrics</h3>
-      <div class="dashboard-grid">
-        ${this._card("Next Dividend Date", Utils.formatDate(data.Next_Dividend_Date))}
-        ${this._card("Direction", data.Div_Predicted, data.Div_Predicted.toLowerCase())}
-        ${this._card("Confidence", data['Div_Confidence (%)'] === 'N/A' ? 'N/A' : `${data['Div_Confidence (%)']}%`)}
-        ${this._card("Forecasted Dividend", Utils.formatMoney(data.Forecasted_Dividend))}
+      <div style="display: flex; flex-direction: column; gap: 16px; margin-top: 20px; margin-bottom: 32px;">
+        ${this._largeCard("Next Projected Payout", d1, f.Next_Payout.Direction, f.Next_Payout.Direction_Confidence, "Forecasted Payout", f.Next_Payout.Amount, f.Next_Payout.Amount_Lower, f.Next_Payout.Amount_Upper, "Predicted Direction (vs. Last Payout)")}
+        ${this._largeCard("2nd Projected Payout", d2, f.Payout_2.Direction, f.Payout_2.Direction_Confidence, "Forecasted Payout", f.Payout_2.Amount, f.Payout_2.Amount_Lower, f.Payout_2.Amount_Upper, "Predicted Direction (vs. Last Payout)")}
+        ${this._largeCard("3rd Projected Payout", d3, f.Payout_3.Direction, f.Payout_3.Direction_Confidence, "Forecasted Payout", f.Payout_3.Amount, f.Payout_3.Amount_Lower, f.Payout_3.Amount_Upper, "Predicted Direction (vs. Last Payout)")}
+        ${this._largeCard("4th Projected Payout", d4, f.Payout_4.Direction, f.Payout_4.Direction_Confidence, "Forecasted Payout", f.Payout_4.Amount, f.Payout_4.Amount_Lower, f.Payout_4.Amount_Upper, "Predicted Direction (vs. Last Payout)")}
+        ${this._largeCard("5th Projected Payout", d5, f.Payout_5.Direction, f.Payout_5.Direction_Confidence, "Forecasted Payout", f.Payout_5.Amount, f.Payout_5.Amount_Lower, f.Payout_5.Amount_Upper, "Predicted Direction (vs. Last Payout)")}
       </div>
-      ${Object.keys(divExt).length ? `
-      <h3 class="subsection-heading">Long-Term Projections</h3>
-      <div class="dashboard-grid">
-        ${this._card(`2nd Payout (${Utils.formatDate(divExt['2_Payouts']?.Date)})`, Utils.formatMoney(divExt['2_Payouts']?.Amount))}
-        ${this._card(`3rd Payout (${Utils.formatDate(divExt['3_Payouts']?.Date)})`, Utils.formatMoney(divExt['3_Payouts']?.Amount))}
-        ${this._card(`4th Payout (${Utils.formatDate(divExt['4_Payouts']?.Date)})`, Utils.formatMoney(divExt['4_Payouts']?.Amount))}
-      </div>` : ''}
     `;
   },
 
   _buildUnifiedTable(title, dateHeader, histHeader, projHeader, rows) {
     if (!rows || !rows.length) return '';
+    const hasProj = rows.some(r => r.proj !== null && r.proj !== undefined);
+    const finalTitle = hasProj ? title : (title.includes("Price") ? "Closed Stock Price History" : "Dividend Payout History");
+    
     let html = '';
     for (let r of rows) {
       const histStr = (r.hist !== null && r.hist !== undefined) ? `<strong style="color:var(--chart-history);">${Utils.formatMoney(r.hist)}</strong>` : '&ndash;';
-      const projStr = (r.proj !== null && r.proj !== undefined) ? `<strong style="color:rgba(var(--brand-rgb), 1);">${Utils.formatMoney(r.proj)}</strong>` : '&ndash;';
-      const ciStr = (r.lower !== null && r.upper !== null && r.lower !== undefined && r.upper !== undefined) ? `${Utils.formatMoney(r.lower)} &ndash; ${Utils.formatMoney(r.upper)}` : '&ndash;';
-      
-      html += `<tr><td>${Utils.formatDate(r.date)}</td><td>${histStr}</td><td>${projStr}</td><td style="color:var(--text-muted);font-size:13px;">${ciStr}</td></tr>`;
+      if (hasProj) {
+        const projStr = (r.proj !== null && r.proj !== undefined) ? `<strong style="color:rgba(var(--brand-rgb), 1);">${Utils.formatMoney(r.proj)}</strong>` : '&ndash;';
+        const ciStr = (r.lower !== null && r.upper !== null && r.lower !== undefined && r.upper !== undefined) ? `${Utils.formatMoney(r.lower)} &ndash; ${Utils.formatMoney(r.upper)}` : '&ndash;';
+        html += `<tr><td>${Utils.formatDate(r.date)}</td><td>${histStr}</td><td>${projStr}</td><td style="color:var(--text-muted);font-size:13px;">${ciStr}</td></tr>`;
+      } else {
+        html += `<tr><td>${Utils.formatDate(r.date)}</td><td>${histStr}</td></tr>`;
+      }
     }
+    
+    const theadHtml = hasProj ? `<th>${dateHeader}</th><th>${histHeader}</th><th>${projHeader}</th><th>Expected Range</th>` : `<th>${dateHeader}</th><th>${histHeader}</th>`;
+    
     return `
-      <h3 class="subsection-heading">${title}</h3>
+      <h3 class="subsection-heading">${finalTitle}</h3>
       <div class="table-wrapper"><table class="glass-table">
-        <thead><tr><th>${dateHeader}</th><th>${histHeader}</th><th>${projHeader}</th><th>95% CI</th></tr></thead>
+        <thead><tr>${theadHtml}</tr></thead>
         <tbody>${html}</tbody>
       </table></div>`;
   },
@@ -513,7 +586,7 @@ const ChartManager = {
     
     if (data.Train_Fit_Dates) {
       data.Train_Fit_Dates.forEach((d, i) => {
-        if (new Date(d) >= new Date(historyCoords[0].x) && d !== anchorDate) {
+        if (d !== anchorDate) {
           unifiedMap.set(d, data.Train_Fit_Prices[i]);
         }
       });
@@ -526,7 +599,7 @@ const ChartManager = {
     data.Chart_Future_Dates.forEach((d, i) => unifiedMap.set(d, data.Chart_Future_Prices[i]));
     const unifiedCoords = Array.from(unifiedMap, ([x, y]) => ({ x, y })).sort((a, b) => new Date(a.x) - new Date(b.x));
 
-    // Confidence Intervals begin expanding outward from the anchor date
+    // Expected Range bounds begin expanding outward from the anchor date
     const upperCoords = [{x: anchorDate, y: projectedToday}, ...data.Chart_Future_Dates.map((d, i) => ({x: d, y: data.Chart_Future_Upper[i]}))];
     const lowerCoords = [{x: anchorDate, y: projectedToday}, ...data.Chart_Future_Dates.map((d, i) => ({x: d, y: data.Chart_Future_Lower[i]}))];
 
@@ -534,6 +607,11 @@ const ChartManager = {
     const allDates = [...hist.dates, ...data.Chart_Future_Dates];
     this.viewState.absoluteMin = new Date(allDates[0]).getTime();
     this.viewState.absoluteMax = new Date(allDates[allDates.length - 1]).getTime();
+    
+    // Add visual right-padding for fallbacks to prevent clipping the final point
+    if (!data.Chart_Future_Dates || data.Chart_Future_Dates.length === 0) {
+      this.viewState.absoluteMax += 14 * 24 * 60 * 60 * 1000;
+    }
 
     if (this.viewState.min === 0 || this.viewState.max === 0) {
       this.viewState.min = this.viewState.absoluteMin;
@@ -544,7 +622,7 @@ const ChartManager = {
     this._renderNavChart(historyCoords, unifiedCoords, colors);
     this._setupNavSlider();
     
-    if (data.Next_Dividend_Date !== 'N/A' && hist.dividend_dates.length) {
+    if (hist.dividend_dates && hist.dividend_dates.length) {
       this._renderDividendChart(data, hist, colors);
     }
   },
@@ -558,7 +636,7 @@ const ChartManager = {
       type: 'line',
       data: {
         datasets: [
-          { label: 'Historical Stock Prices', data: hist, backgroundColor: colors.history, borderColor: 'transparent', pointRadius: 2, order: 1 },
+          { label: 'Historical Stock Prices', data: hist, backgroundColor: colors.history, borderColor: colors.history, borderWidth: 1.5, pointRadius: 2, order: 1 },
           { label: 'Projected Stock Prices', data: proj, borderColor: `rgba(${colors.brandRGB}, 1)`, backgroundColor: `rgba(${colors.brandRGB}, 0.4)`, borderWidth: 2, pointRadius: 0, tension: 0.2, order: 0 },
           { label: 'Upper Bound', data: upper, backgroundColor: `rgba(${colors.brandRGB}, 0.15)`, borderColor: 'transparent', pointRadius: 0, pointHoverRadius: 0, pointHitRadius: 0, fill: '+1', tension: 0.3, order: 2 },
           { label: 'Lower Bound', data: lower, borderColor: 'transparent', pointRadius: 0, pointHoverRadius: 0, pointHitRadius: 0, fill: false, tension: 0.3, order: 2 },
@@ -580,8 +658,9 @@ const ChartManager = {
           }
         },
         plugins: {
-          title: { display: true, text: 'Closed Stock Price History & Forecast Trends with 95% Confidence Interval', color: colors.text, font: { size: 14, weight: '600' }, padding: { bottom: 16 } },
+          title: { display: true, text: (data.Chart_Future_Dates && data.Chart_Future_Dates.length) ? 'Closed Stock Price History & Forecast Trends with Expected Range' : 'Closed Stock Price History', color: colors.text, font: { size: 14, weight: '600' }, padding: { bottom: 16 } },
           legend: { 
+            display: (data.Chart_Future_Dates && data.Chart_Future_Dates.length) > 0,
             labels: { 
               color: colors.text, 
               usePointStyle: true,
@@ -591,7 +670,7 @@ const ChartManager = {
                   { text: 'Projected Stock Prices', fillStyle: `rgba(${colors.brandRGB}, 0.4)`, strokeStyle: `rgba(${colors.brandRGB}, 1)`, fontColor: colors.text }
                 ];
                 if (data.Chart_Future_Dates && data.Chart_Future_Dates.length) {
-                  items.push({ text: '95% Confidence Interval', fillStyle: `rgba(${colors.brandRGB}, 0.15)`, strokeStyle: 'transparent', fontColor: colors.text });
+                  items.push({ text: 'Expected Range', fillStyle: `rgba(${colors.brandRGB}, 0.15)`, strokeStyle: 'transparent', fontColor: colors.text });
                 }
                 return items;
               }
@@ -630,7 +709,7 @@ const ChartManager = {
                   const hi = data.Chart_Future_Upper[ciIndex].toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
                   return [
                     `Projected Stock Price: $${price}`,
-                    `95% CI: $${lo} \u2013 $${hi}`,
+                    `Expected Range: $${lo} \u2013 $${hi}`,
                   ];
                 }
                 return `Projected Stock Price: $${price}`;
@@ -798,7 +877,7 @@ const ChartManager = {
         labels: finalLabels,
         datasets: [
           {
-            label: '95% CI',
+            label: 'Expected Range',
             data: floatingCIBounds,
             backgroundColor: `rgba(${colors.brandRGB}, 0.15)`,
             grouped: false,
@@ -838,9 +917,9 @@ const ChartManager = {
           y: { grid: { color: colors.grid }, ticks: { color: colors.text, font: { size: 11 }, callback: v => `$${v.toFixed(2)}` } } 
         },
         plugins: {
-          title: { display: true, text: 'Dividend Payout History & Forecast Trends with 95% Confidence Interval', color: colors.text, font: { size: 14, weight: '600' }, padding: { bottom: 16 } },
+          title: { display: true, text: projData.some(p => p !== null) ? 'Dividend Payout History & Forecast Trends with Expected Range' : 'Dividend Payout History', color: colors.text, font: { size: 14, weight: '600' }, padding: { bottom: 16 } },
           legend: { 
-            display: true,
+            display: projData.some(p => p !== null),
             labels: {
               color: colors.text,
               usePointStyle: true,
@@ -852,7 +931,7 @@ const ChartManager = {
                   items.push({ text: 'Projected Payout', fillStyle: `rgba(${colors.brandRGB}, 0.8)`, strokeStyle: 'transparent', fontColor: colors.text });
                 }
                 if (data.Div_Future_Dates && data.Div_Future_Dates.length) {
-                  items.push({ text: '95% Confidence Interval', fillStyle: `rgba(${colors.brandRGB}, 0.15)`, strokeStyle: 'transparent', fontColor: colors.text });
+                  items.push({ text: 'Expected Range', fillStyle: `rgba(${colors.brandRGB}, 0.15)`, strokeStyle: 'transparent', fontColor: colors.text });
                 }
                 return items;
               }
@@ -879,7 +958,7 @@ const ChartManager = {
                   if (ciUpper[i] !== null && ciUpper[i] !== undefined) {
                     return [
                       `Projected Dividend Payout: $${amount.toFixed(2)}`,
-                      `95% CI: $${ciLower[i].toFixed(2)} \u2013 $${ciUpper[i].toFixed(2)}`
+                      `Expected Range: $${ciLower[i].toFixed(2)} \u2013 $${ciUpper[i].toFixed(2)}`
                     ];
                   }
                   return `Projected Dividend Payout: $${amount.toFixed(2)}`;
@@ -927,21 +1006,176 @@ const App = {
     State.isSearching = true;
     UIManager.setLoading(true);
 
+    // Reset SSE Progress UI
+    const progressFill = document.getElementById('progress-bar-fill');
+    const progressPercentage = document.getElementById('progress-percentage');
+    const stepsContainer = document.getElementById('progress-steps-container');
+    if (progressFill) progressFill.style.width = '0%';
+    if (progressPercentage) progressPercentage.textContent = '0%';
+    if (stepsContainer) stepsContainer.innerHTML = '';
+    
+    const timers = {};
+    let activeStepElement = null;
+    let timerInterval = null;
+
     try {
-      const response = await fetch(`/predict/${ticker}`);
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'An unknown error occurred.');
+      const eventSource = new EventSource(`/predict_stream/${ticker}`);
       
-      State.lastFetchedData = data;
-      UIManager.renderDashboard(data);
+      eventSource.onmessage = (e) => {
+        const data = JSON.parse(e.data);
+        
+        if (data.status === 'error') {
+            eventSource.close();
+            clearInterval(timerInterval);
+            UIManager.showError(data.error || 'An unknown error occurred.');
+            UIManager.setLoading(false);
+            State.isSearching = false;
+            return;
+        }
+
+        if (data.progress !== undefined) {
+            if (progressFill) progressFill.style.width = `${data.progress}%`;
+            if (progressPercentage) progressPercentage.textContent = `${data.progress}%`;
+        }
+
+        if (data.status === 'processing' && data.step) {
+            if (activeStepElement) {
+                // Complete previous step
+                activeStepElement.classList.remove('active');
+                activeStepElement.classList.add('completed');
+                const icon = activeStepElement.querySelector('.step-icon');
+                if (icon) {
+                    icon.className = 'step-icon';
+                    icon.textContent = '✓';
+                    icon.style.color = 'var(--brand-success)';
+                    icon.style.border = 'none';
+                    icon.style.animation = 'none';
+                }
+            }
+            
+            // Create new step
+            const stepId = `step-${Date.now()}`;
+            timers[stepId] = 0.0;
+            const stepEl = document.createElement('div');
+            stepEl.className = 'progress-step active';
+            stepEl.innerHTML = `
+                <div class="step-left">
+                    <span class="step-icon spinner-icon"></span>
+                    <span>${data.step}</span>
+                </div>
+                <span class="step-timer" id="${stepId}">0.0s</span>
+            `;
+            if (stepsContainer) stepsContainer.appendChild(stepEl);
+            activeStepElement = stepEl;
+            
+            // Start timer
+            clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                timers[stepId] += 0.1;
+                const timeEl = document.getElementById(stepId);
+                if (timeEl) timeEl.textContent = `${timers[stepId].toFixed(1)}s`;
+            }, 100);
+        }
+
+        if (data.status === 'complete') {
+            eventSource.close();
+            clearInterval(timerInterval);
+            if (activeStepElement) {
+                activeStepElement.classList.remove('active');
+                activeStepElement.classList.add('completed');
+                const icon = activeStepElement.querySelector('.step-icon');
+                if (icon) {
+                    icon.className = 'step-icon';
+                    icon.textContent = '✓';
+                    icon.style.color = 'var(--brand-success)';
+                    icon.style.border = 'none';
+                    icon.style.animation = 'none';
+                }
+            }
+
+            // Hold on 100% for a moment so the user sees completion
+            setTimeout(() => {
+                Elements.loader.classList.add('fade-out');
+                
+                setTimeout(() => {
+                    UIManager.setLoading(false); // Instantly hides it natively
+                    Elements.loader.classList.remove('fade-out');
+                    
+                    State.lastFetchedData = data.result;
+                    UIManager.renderDashboard(data.result);
+                    
+                    // Fade in the new dashboard
+                    Elements.resultContainer.classList.add('fade-in');
+                    setTimeout(() => {
+                        Elements.resultContainer.classList.remove('fade-in');
+                    }, 500);
+
+                    State.isSearching = false;
+                }, 350); // Wait for fadeOut animation to finish
+            }, 800); // 800ms hold on 100%
+        }
+      };
+      
+      eventSource.onerror = (err) => {
+        console.error("SSE Error", err);
+        eventSource.close();
+        clearInterval(timerInterval);
+        UIManager.showError('Connection to server lost. Please try again.');
+        UIManager.setLoading(false);
+        State.isSearching = false;
+      };
+
     } catch (error) {
+      clearInterval(timerInterval);
       UIManager.showError(error.message);
-    } finally {
       UIManager.setLoading(false);
       State.isSearching = false;
     }
   }
 };
 
+// News Modal Logic
+const NewsModal = {
+    init() {
+        this.overlay = document.getElementById('newsModal');
+        this.titleEl = document.getElementById('modalTitle');
+        this.publisherEl = document.getElementById('modalPublisher');
+        this.summaryEl = document.getElementById('modalSummary');
+        this.linkEl = document.getElementById('modalExternalLink');
+        this.closeBtn = document.getElementById('closeModalBtn');
+        this.contentBox = this.overlay.querySelector('.modal-content');
+
+        this.closeBtn.addEventListener('click', () => this.close());
+        this.overlay.addEventListener('click', (e) => {
+            // Close if clicking outside the modal content
+            if (e.target === this.overlay) this.close();
+        });
+    },
+
+    open(title, summary, publisher, url) {
+        // Decode escaped characters
+        const decode = (str) => str.replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+
+        this.titleEl.textContent = decode(title);
+        this.summaryEl.textContent = decode(summary);
+        this.publisherEl.textContent = decode(publisher);
+        this.linkEl.href = url;
+
+        this.overlay.style.display = 'flex';
+        this.overlay.classList.remove('modal-fadeOut');
+    },
+
+    close() {
+        this.overlay.classList.add('modal-fadeOut');
+        // Wait for animation to finish before hiding
+        setTimeout(() => {
+            this.overlay.style.display = 'none';
+        }, 300);
+    }
+};
+
 // Bootstrap Application
-document.addEventListener('DOMContentLoaded', () => App.init());
+document.addEventListener('DOMContentLoaded', () => {
+    App.init();
+    NewsModal.init();
+});

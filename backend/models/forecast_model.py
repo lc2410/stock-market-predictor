@@ -1,9 +1,8 @@
 import yfinance as yf
 import pandas as pd
 import numpy as np
-from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+from sklearn.ensemble import HistGradientBoostingRegressor, HistGradientBoostingClassifier
 from sklearn.calibration import CalibratedClassifierCV
-from sklearn.model_selection import TimeSeriesSplit, RandomizedSearchCV
 from pandas.tseries.offsets import CustomBusinessDay
 from pandas.tseries.holiday import USFederalHolidayCalendar
 import logging
@@ -14,238 +13,191 @@ def _get_us_bday():
     """Returns a calendar object used to skip weekends and US market holidays."""
     return CustomBusinessDay(calendar=USFederalHolidayCalendar())
 
-def get_chart_data(ticker_symbol, predicted_price=None):
+def get_chart_data(price_data, div_data=None, is_crypto=False, show_all_prices=False, show_all_divs=False):
     """Retrieves the recent historical price and dividend data needed to draw the frontend charts."""
-    try:
-        ticker = yf.Ticker(ticker_symbol)
-        hist = ticker.history(period="5y")
+    if price_data is None or price_data.empty:
+        return {"dates": [], "prices": [], "dividend_dates": [], "dividend_amounts": []}
+        
+    if show_all_prices:
+        hist = price_data
+    else:
+        # Slice to past 1 year of trading data for the chart UI
+        days_in_year = 365 if is_crypto else 252
+        hist = price_data.iloc[-days_in_year:]
+    
+    dates = hist.index.strftime('%Y-%m-%d').tolist()
+    prices = [round(float(p), 2) for p in hist['Close'].tolist()]
 
-        if not hist.empty:
-            hist = hist.dropna(subset=['Close']) 
-            hist.index = pd.to_datetime(hist.index).tz_localize(None).normalize()
-            hist = hist[~hist.index.duplicated(keep='last')]
+    div_source = div_data if div_data is not None else price_data
 
-        dates = hist.index.strftime('%Y-%m-%d').tolist() if not hist.empty else []
-        prices = hist['Close'].tolist() if not hist.empty else []
+    # Extract historical dividends
+    if 'Dividends' in div_source.columns:
+        dividends = div_source[div_source['Dividends'] > 0]['Dividends']
+        if not dividends.empty:
+            if not show_all_divs:
+                # Slice to past 5 dividend payouts for the chart UI
+                dividends = dividends.iloc[-5:]
+            dividend_dates = dividends.index.strftime('%Y-%m-%d').tolist()
+            dividend_amounts = [round(float(d), 2) for d in dividends.tolist()]
+        else:
+            dividend_dates = []
+            dividend_amounts = []
+    else:
+        dividend_dates = []
+        dividend_amounts = []
 
-        if predicted_price is not None and not hist.empty:
-            anchor_date = hist.index[-1]
-            dates.append((anchor_date + _get_us_bday()).strftime('%Y-%m-%d'))
-            prices.append(float(predicted_price))
+    return {
+        "dates": dates,
+        "prices": prices,
+        "dividend_dates": dividend_dates,
+        "dividend_amounts": dividend_amounts
+    }
 
-        divs = ticker.dividends.tail(20)
-        if not divs.empty:
-            divs = divs.dropna() 
-            divs.index = pd.to_datetime(divs.index).tz_localize(None).normalize()
-            divs = divs[~divs.index.duplicated(keep='last')]
-
-        return {
-            "dates": dates,
-            "prices": prices,
-            "dividend_dates": divs.index.strftime('%Y-%m-%d').tolist() if not divs.empty else [],
-            "dividend_amounts": divs.values.tolist() if not divs.empty else [],
-        }
-    except Exception as e:
-        print(f"Error fetching chart data: {e}")
-        return None
-
-def _fetch_data(ticker):
-    """Downloads all available historical stock data from Yahoo Finance and checks if there is enough data to train the models."""
+def _fetch_data(ticker, is_crypto=False):
+    """
+    Fetches historical stock data from Yahoo Finance.
+    Adaptively fetches data incrementally (5 to 30 years) to balance API latency and data completeness.
+    """
     stock_ticker = yf.Ticker(ticker)
-    data = stock_ticker.history(period="max")
+    
+    target_window = 1825 if is_crypto else 1260
+    buffer_days = 365 if is_crypto else 252
+    min_required_days = target_window + buffer_days
+    
+    years_to_fetch = 5
+    data = None
+    dividends = None
+    
+    while years_to_fetch <= 30:
+        data = stock_ticker.history(period=f"{years_to_fetch}y")
+        
+        if data.empty:
+            return None, None, None
+            
+        data.index = pd.to_datetime(data.index).tz_localize(None).normalize()
+        data = data[~data.index.duplicated(keep='last')]
+        data = data.dropna(subset=['Close'])
+        
+        dividends = data[data["Dividends"] > 0]
+        
+        has_enough_price = len(data) >= min_required_days
+        
+        has_enough_divs = True
+        # Check if we need more history to capture the 25 payout minimum
+        if len(dividends) > 0 and len(dividends) < 25:
+            expected_days = years_to_fetch * (365 if is_crypto else 252) * 0.90
+            if len(data) >= expected_days:
+                has_enough_divs = False
+        
+        if has_enough_price and has_enough_divs:
+            break
+            
+        # Break early if we've hit the asset's IPO date
+        expected_days = years_to_fetch * (365 if is_crypto else 252) * 0.90
+        if len(data) < expected_days:
+            break
+            
+        years_to_fetch += 5
 
-    if data.empty:
-        print(f"Error: No data found for ticker '{ticker}'.")
-        return None
-
-    data.index = pd.to_datetime(data.index).tz_localize(None).normalize()
-    data = data[~data.index.duplicated(keep='last')]
-
-    data = data.loc["2010-01-01":].copy()
-    # Ensure there's at least 1300 data points for training the model
-    if len(data) < 1300:
-        print(f"Error: Not enough historical data for {ticker}.")
-        return None
-
-    return data
+    if data is None or len(data) < 2:
+        return None, None, None
+        
+    # Isolate recent data for the price model to minimize computation
+    if len(data) >= min_required_days:
+        price_data_slice = data.iloc[-min_required_days:].copy()
+    else:
+        price_data_slice = data.copy()
+        
+    # Strip non-price metrics from the price dataset
+    price_data_slice = price_data_slice.drop(columns=['Dividends', 'Stock Splits'], errors='ignore')
+    
+    # Isolate enough data to capture 25 payouts plus a 1-year trailing price buffer
+    if len(dividends) > 25:
+        earliest_div_date = dividends.index[-25]
+        cutoff_date = earliest_div_date - pd.Timedelta(days=365)
+        div_data_slice = data.loc[cutoff_date:].copy()
+    else:
+        div_data_slice = data.copy()
+        
+    return price_data_slice, div_data_slice, target_window
 
 def _engineer_price_features(data):
-    """Calculates technical indicators and engineered features to help the model understand recent price trends."""
+    """Computes technical indicators for the ML price model predictors."""
     price_data = data[["Close", "Volume"]].copy()
     
-    # 'Tomorrow' target (Required by the Regressor)
-    price_data["Tomorrow"] = price_data["Close"].shift(-1)
-    
-    # Smooth the target for better short-term trend prediction
-    price_data["Smoothed_Future"] = price_data["Close"].shift(-1).rolling(window=3).mean()
-    price_data["Price_Target"] = (price_data["Smoothed_Future"] > price_data["Close"]).astype(int)
-
-    # Price Action (The raw signal)
+    # Log Returns
     price_data["Log_Return"] = np.log(price_data["Close"] / price_data["Close"].shift(1))
+    
+    # Lagged Returns
     price_data["Return_Lag_1"] = price_data["Log_Return"].shift(1)
+    price_data["Return_Lag_2"] = price_data["Log_Return"].shift(2)
+    price_data["Return_Lag_3"] = price_data["Log_Return"].shift(3)
 
-    # Trend & Momentum (Is it going up, and how fast?)
+    # RSI (5-day and 14-day)
     delta = price_data["Close"].diff()
+    
+    gain_5 = delta.where(delta > 0, 0).ewm(span=5, adjust=False).mean()
+    loss_5 = (-delta.where(delta < 0, 0)).ewm(span=5, adjust=False).mean()
+    price_data["RSI_5"] = (100 - (100 / (1 + gain_5 / loss_5))).fillna(100)
+    
     gain = delta.where(delta > 0, 0).ewm(span=14, adjust=False).mean()
     loss = (-delta.where(delta < 0, 0)).ewm(span=14, adjust=False).mean()
     price_data["RSI_14"] = (100 - (100 / (1 + gain / loss))).fillna(100)
 
+    # MACD Histogram
     ema_12 = price_data["Close"].ewm(span=12, adjust=False).mean()
     ema_26 = price_data["Close"].ewm(span=26, adjust=False).mean()
     price_data["MACD_Hist"] = (ema_12 - ema_26) - (ema_12 - ema_26).ewm(span=9, adjust=False).mean()
 
-    # Volatility & Mean Reversion (Is it overextended?)
+    # Bollinger Bands
     roll_mean = price_data["Close"].rolling(20).mean()
     roll_std = price_data["Close"].rolling(20).std()
     price_data["BB_Width"] = (4 * roll_std) / (roll_mean + 1e-9)
     price_data["BB_Pos"] = (price_data["Close"] - (roll_mean - 2 * roll_std)) / (4 * roll_std + 1e-9)
 
-    # Volume Context: (Is there institutional conviction behind recent price movements?)
+    # Volume Ratio
     rolling_vol = price_data["Volume"].rolling(10).mean()
     price_data["Vol_Ratio_10"] = np.where(rolling_vol > 0, price_data["Volume"] / rolling_vol, 1.0)
 
-    predictors = [
-        "Log_Return", "Return_Lag_1", "RSI_14", "MACD_Hist", 
-        "BB_Width", "BB_Pos", "Vol_Ratio_10"
-    ]
+    # SMA Ratios
+    price_data["SMA_Ratio_50"] = price_data["Close"] / price_data["Close"].rolling(50).mean()
+    price_data["SMA_Ratio_200"] = price_data["Close"] / price_data["Close"].rolling(200).mean()
+    
+    # Historical Volatility
+    price_data["Hist_Vol_20"] = price_data["Log_Return"].rolling(20).std()
+    
+    # Rate of Change (ROC)
+    price_data["ROC_10"] = price_data["Close"].pct_change(10)
+    price_data["ROC_21"] = price_data["Close"].pct_change(21)
+    
+    # Drawdown
+    roll_max_50 = price_data["Close"].rolling(50, min_periods=1).max()
+    price_data["Drawdown_50"] = (price_data["Close"] - roll_max_50) / roll_max_50
+    roll_max_200 = price_data["Close"].rolling(200, min_periods=1).max()
+    price_data["Drawdown_200"] = (price_data["Close"] - roll_max_200) / roll_max_200
 
-    price_data = price_data.dropna(subset=predictors)
+    predictors = [
+        "Log_Return", "Return_Lag_1", "Return_Lag_2", "Return_Lag_3",
+        "RSI_5", "RSI_14", "MACD_Hist", 
+        "BB_Width", "BB_Pos", "Vol_Ratio_10",
+        "SMA_Ratio_50", "SMA_Ratio_200",
+        "Hist_Vol_20", "ROC_10", "ROC_21", "Drawdown_50", "Drawdown_200"
+    ]
 
     return price_data, predictors
 
-def _train_price_classifier(train, test, predictors, ticker):
-    """Trains a machine learning model to predict whether the stock price will go UP or DOWN tomorrow, and calculates the confidence percentage."""
-    tscv = TimeSeriesSplit(n_splits=3)
-    search = RandomizedSearchCV(
-        RandomForestClassifier(random_state=1, n_jobs=-1),
-        {"n_estimators": [100, 200, 300], "max_depth": [6, 8, 10, 12, None],
-         "min_samples_leaf": [5, 10, 20, 30], "max_features": ["sqrt", "log2", 0.5]},
-        n_iter=8, cv=tscv, scoring="roc_auc", random_state=1, n_jobs=1,
-    )
-    search.fit(train[predictors], train["Price_Target"])
-    best_rf = search.best_estimator_
-    print(f"[{ticker}] Best classifier params: {search.best_params_}")
-
-    calibrated_clf = CalibratedClassifierCV(best_rf, method="isotonic", cv=TimeSeriesSplit(n_splits=5), n_jobs=1)
-    calibrated_clf.fit(train[predictors], train["Price_Target"])
-
-    direction = int(calibrated_clf.predict(test[predictors])[0])
-    prob_up = float(calibrated_clf.predict_proba(test[predictors])[0, 1])
-
-    confidence = prob_up if direction == 1 else 1.0 - prob_up
-    return direction, confidence
-
-def _train_price_regressor(train, test, predictors, direction, today_close, ticker, target_dates):
-    """Trains a machine learning model to predict the exact dollar amount of tomorrow's closing price."""
-    tscv = TimeSeriesSplit(n_splits=3)
-    train_target_return = np.log(train["Tomorrow"] / train["Close"])
-    
-    search_reg = RandomizedSearchCV(
-        RandomForestRegressor(random_state=1, n_jobs=-1),
-        {"n_estimators": [100, 200, 300], "max_depth": [6, 8, 10, None], "min_samples_leaf": [5, 10, 20]},
-        n_iter=8, cv=tscv, scoring="neg_mean_absolute_error", random_state=1, n_jobs=1,
-    )
-    search_reg.fit(train[predictors], train_target_return)
-    price_reg = search_reg.best_estimator_
-    print(f"[{ticker}] Best regressor params: {search_reg.best_params_}")
-
-    pred_log_return = float(price_reg.predict(test[predictors])[0])
-    forecasted_close = float(today_close * np.exp(pred_log_return))
-
-    train_fitted_returns = price_reg.predict(train[predictors])
-    train_fitted = train["Close"].values * np.exp(train_fitted_returns)
-    
-    # Slice historical fits to match the exact length of the requested target_dates
-    train_fit_prices = [round(float(p), 2) for p in train_fitted[-len(target_dates):]]
-
-    if direction == 1:
-        forecasted_close = max(forecasted_close, today_close * 1.001)
-    else:
-        forecasted_close = min(forecasted_close, today_close * 0.999)
-
-    return round(forecasted_close, 2), train_fit_prices
-
-def _forecast_price_long_term(price_data, test_row, predictors, today_close, forecast_close, price_window, anchor_date):
-    """Projects the estimated stock price out to 1 week, 1 month, and 1 year, and calculates the margin of error bounds for the chart."""
-    
-    # Calculate volatility strictly on the recent training window
-    daily_vol = price_data["Log_Return"].iloc[-price_window:].std()
-    
-    us_bday = _get_us_bday()
-    all_future_dates = pd.date_range(
-        start=anchor_date + us_bday, periods=252, freq=us_bday
-    )
-
-    horizon_prices = {0: today_close, 1: forecast_close}
-    for h_label, h_days in [("1_Week", 5), ("1_Month", 21), ("1_Year", 252)]:
-        lt_data = price_data[["Close"] + predictors].copy()
-        
-        # This correctly targets the stationary log return of the future horizons
-        lt_data["Future_Log_Return"] = np.log(lt_data["Close"].shift(-h_days) / lt_data["Close"])
-        lt_data = lt_data.dropna()
-
-        if len(lt_data) > 100:
-            lt_reg = RandomForestRegressor(
-                n_estimators=200, max_depth=10, min_samples_leaf=10, random_state=1, n_jobs=-1
-            )
-            lt_reg.fit(lt_data.iloc[-price_window:][predictors], lt_data.iloc[-price_window:]["Future_Log_Return"])
-            
-            clip_bound = 0.90 if h_days == 252 else 0.60
-            pred_log_return = np.clip(float(lt_reg.predict(test_row[predictors])[0]), -clip_bound, clip_bound)
-            
-            # Reconstruct the absolute price anchor
-            horizon_prices[h_days] = float(round(today_close * np.exp(pred_log_return), 2))
-        else:
-            horizon_prices[h_days] = today_close
-
-    anchors = sorted(horizon_prices.items())
-
-    def interp_price(t):
-        """Smoothly connects the dots between our short-term and long-term price targets."""
-        for i in range(len(anchors) - 1):
-            t0, p0 = anchors[i]
-            t1, p1 = anchors[i + 1]
-            if t0 <= t <= t1:
-                frac = (t - t0) / (t1 - t0)
-                return float(np.exp(np.log(p0) + frac * (np.log(p1) - np.log(p0))))
-        return anchors[-1][1]
-
-    chart_future_dates, chart_future_prices, chart_future_upper, chart_future_lower = [], [], [], []
-    for t, future_date in enumerate(all_future_dates, start=1):
-        price_t = round(interp_price(t), 2)
-        moe_t = 1.96 * daily_vol * np.sqrt(t)
-        
-        # Apply exponential math for the upper/lower bounds
-        upper_bound = float(round(price_t * np.exp(moe_t), 2))
-        lower_bound = float(round(price_t * np.exp(-moe_t), 2))
-        
-        chart_future_dates.append(future_date.strftime('%Y-%m-%d'))
-        chart_future_prices.append(price_t)
-        chart_future_upper.append(upper_bound)
-        chart_future_lower.append(lower_bound)
-
-    extended_forecasts = {
-        label: {
-            "Date": chart_future_dates[idx],
-            "Price": chart_future_prices[idx],
-            "Upper": chart_future_upper[idx],
-            "Lower": chart_future_lower[idx],
-        }
-        for label, idx in [("1_Week", 4), ("1_Month", 20), ("1_Year", 251)]
-    }
-
-    return chart_future_dates, chart_future_prices, chart_future_upper, chart_future_lower, extended_forecasts
-
-def _engineer_div_features(data, anchor_date):
-    """Estimates the date of the next dividend payout and prepares historical dividend trends for the model to study."""
-    # Add 252-day trailing price return as a base feature for dividend prediction
+def _engineer_div_features(data, anchor_date, div_window=25):
+    """
+    Extracts dividend payouts and calculates predictors (rolling averages, growth).
+    Returns None if fewer than `div_window` payouts exist to trigger UI fallback.
+    """
+    # 1-year trailing price return
     data["Price_Return_252"] = data["Close"].pct_change(252)
-    
     divs = data[["Dividends", "Price_Return_252"]].copy()
     divs = divs[divs["Dividends"] > 0].copy()
 
-    if len(divs) < 10:
-        return None, None, pd.NaT, 0.0
+    if len(divs) < div_window:
+        return None, None, pd.NaT
 
     last_div_date = divs.index[-1]
     avg_days_between = divs.index.to_series().diff().mean().days
@@ -258,200 +210,391 @@ def _engineer_div_features(data, anchor_date):
         projected_date += pd.Timedelta(days=avg_days_between)
     next_dividend_date = projected_date
 
-    divs["Next_Dividend"] = divs["Dividends"].shift(-1)
-    divs["Div_Target"] = (divs["Next_Dividend"] > divs["Dividends"]).astype(int)
-    
-    # Looks at Immediate Growth
+    # Period-over-period growth
     divs["Div_Growth_1"] = divs["Dividends"].pct_change(1)
-    # Looks at Short-Term Historical Trends (1 Year of Quarterly Payouts)
+    # Rolling 4-payout average
     divs["Rolling_Avg_4"] = divs["Dividends"].rolling(4).mean()
 
-    div_predictors = [
-        "Dividends", "Div_Growth_1", "Rolling_Avg_4", "Price_Return_252"
-    ]
+    div_predictors = ["Price_Return_252", "Div_Growth_1", "Rolling_Avg_4"]
+
+    return divs, div_predictors, next_dividend_date
+
+def extract_quantiles_metrics(clf, reg_median, reg_lower, reg_upper, test_row, predictors, today_val):
+    """
+    Extracts direction, confidence, and bounds from the models.
+    Regressor defines the amount and direction; classifier defines direction confidence.
+    """
+    mean_log_return = float(reg_median.predict(test_row[predictors])[0])
+    lower_log_return = float(reg_lower.predict(test_row[predictors])[0])
+    upper_log_return = float(reg_upper.predict(test_row[predictors])[0])
     
-    today_div = float(divs["Dividends"].iloc[-1])
-    divs = divs.dropna(subset=div_predictors)
-
-    return divs, div_predictors, next_dividend_date, today_div
-
-def _train_div_classifier(train_div, test_div, div_predictors):
-    """Trains a machine learning model to predict if the next dividend payout will be HIGHER or LOWER than the previous one."""
-    if train_div["Div_Target"].nunique() <= 1:
-        div_pred = int(train_div["Div_Target"].iloc[0])
-        return div_pred, 0.5
-
-    try:
-        cal_div = CalibratedClassifierCV(
-            RandomForestClassifier(n_estimators=100, min_samples_split=2, random_state=1, n_jobs=1),
-            method="isotonic", cv=TimeSeriesSplit(n_splits=3), n_jobs=1,
-        )
-        cal_div.fit(train_div[div_predictors], train_div["Div_Target"])
-        div_pred = int(cal_div.predict(test_div[div_predictors])[0])
-        prob_up = float(cal_div.predict_proba(test_div[div_predictors])[0, 1])
-    except ValueError:
-        div_clf = RandomForestClassifier(n_estimators=100, min_samples_split=2, random_state=1, n_jobs=1)
-        div_clf.fit(train_div[div_predictors], train_div["Div_Target"])
-        div_pred = int(div_clf.predict(test_div[div_predictors])[0])
-        prob_up = float(div_clf.predict_proba(test_div[div_predictors])[0, 1]) if len(div_clf.classes_) == 2 else 0.5
-
-    confidence = prob_up if div_pred == 1 else (1.0 - prob_up)
-    return div_pred, confidence
-
-def _train_div_regressor(train_div, test_div, div_predictors, div_pred, today_div):
-    """Trains a machine learning model to predict the exact dollar amount of the upcoming dividend payout."""
-    # Target the stationary Log Return (Growth) of the dividend
-    train_target_growth = np.log(train_div["Next_Dividend"] / train_div["Dividends"])
+    # Natively align direction with regressor outcome
+    direction = 1 if mean_log_return > 0 else 0
     
-    div_reg = RandomForestRegressor(n_estimators=100, min_samples_split=2, random_state=1, n_jobs=1)
-    div_reg.fit(train_div[div_predictors], train_target_growth)
-    
-    # Predict the growth rate and reconstruct the absolute payout
-    pred_growth = float(div_reg.predict(test_div[div_predictors])[0])
-    forecasted_div = float(today_div * np.exp(pred_growth))
-
-    # Nudge to stay consistent with the classifier
-    forecasted_div = (
-        max(forecasted_div, today_div * 1.001) if div_pred == 1
-        else min(forecasted_div, today_div * 0.999)
-    )
-
-    # Reconstruct the historical training fit using the trained model
-    train_fitted_growth = div_reg.predict(train_div[div_predictors])
-    train_fitted_amounts = [round(float(x), 2) for x in (train_div["Dividends"].values * np.exp(train_fitted_growth))]
-
-    return round(forecasted_div, 2), train_fitted_amounts
-
-def _forecast_div_long_term(divs, div_predictors, test_div, today_div, forecasted_div, next_dividend_date, avg_days_between, div_window):
-    """Projects the estimated dollar amounts for the 2nd, 3rd, and 4th upcoming dividend payouts."""
-    payout_vol = divs["Dividends"].pct_change().std()
-
-    div_future_dates  = [next_dividend_date.strftime('%Y-%m-%d')]
-    div_future_amounts = [round(forecasted_div, 2)] 
-    moe_1 = 1.96 * payout_vol * np.sqrt(1)
-    div_future_upper  = [round(forecasted_div * (1 + moe_1), 2)] 
-    div_future_lower  = [round(max(forecasted_div * (1 - moe_1), 0.0), 2)] 
-
-    for cycle in range(2, 5):
-        target_col = f"Div_Growth_{cycle}"
-        lt_divs = divs[div_predictors].copy()
+    # Extract classifier confidence
+    proba = clf.predict_proba(test_row[predictors])[0]
+    if len(clf.classes_) == 2 and clf.classes_[1] == 1:
+        prob_up = float(proba[1])
+    else:
+        prob_up = 1.0 if clf.classes_[0] == 1 else 0.0
         
-        # Predict the log growth from the current dividend to the future cycle
-        future_div = lt_divs["Dividends"].shift(-cycle)
-        lt_divs[target_col] = np.log(future_div / lt_divs["Dividends"])
-        lt_divs = lt_divs.dropna()
-
-        if len(lt_divs) > 8:
-            lt_reg = RandomForestRegressor(n_estimators=100, min_samples_split=2, random_state=1, n_jobs=1)
-            lt_reg.fit(lt_divs.iloc[-div_window:][div_predictors], lt_divs.iloc[-div_window:][target_col])
-            
-            # Predict the growth and reconstruct the absolute amount
-            pred_growth = float(lt_reg.predict(test_div[div_predictors])[0])
-            predicted_amount = round(float(today_div * np.exp(pred_growth)), 2) 
-        else:
-            predicted_amount = round(today_div, 2) 
-
-        moe = 1.96 * payout_vol * np.sqrt(cycle)
-        projected_date = next_dividend_date + pd.Timedelta(days=avg_days_between * (cycle - 1))
-
-        div_future_dates.append(projected_date.strftime('%Y-%m-%d'))
-        div_future_amounts.append(predicted_amount)
-        div_future_upper.append(round(predicted_amount * (1 + moe), 2)) 
-        div_future_lower.append(round(max(predicted_amount * (1 - moe), 0.0), 2)) 
-
-    div_extended_forecasts = {
-        label: {
-            "Date": div_future_dates[idx],
-            "Amount": div_future_amounts[idx],
-            "Upper": div_future_upper[idx],
-            "Lower": div_future_lower[idx],
-        }
-        for label, idx in [("2_Payouts", 1), ("3_Payouts", 2), ("4_Payouts", 3)]
+    dir_conf_final = prob_up if direction == 1 else (1.0 - prob_up)
+    
+    # Process Bounds
+    margin = abs((upper_log_return - lower_log_return) / 2.0)
+    final_upper_log = mean_log_return + margin
+    final_lower_log = mean_log_return - margin
+        
+    forecasted_amount = float(today_val * np.exp(mean_log_return))
+    amount_lower = float(today_val * np.exp(final_lower_log))
+    amount_upper = float(today_val * np.exp(final_upper_log))
+    
+    # Enforce minimum visual margin (max of 2% or $0.01) to prevent flat bounds in UI
+    min_margin = max(forecasted_amount * 0.02, 0.01)
+    
+    if (amount_upper - forecasted_amount) < min_margin:
+        amount_upper = forecasted_amount + min_margin
+        amount_lower = max(0.0, forecasted_amount - min_margin) # Prevent negative values
+    
+    return {
+        "Direction": "Up" if direction == 1 else "Down",
+        "Direction_Confidence": round(dir_conf_final * 100, 2),
+        "Amount": round(forecasted_amount, 2),
+        "Amount_Lower": round(amount_lower, 2),
+        "Amount_Upper": round(amount_upper, 2)
     }
 
-    return div_future_dates, div_future_amounts, div_future_upper, div_future_lower, div_extended_forecasts
+def _train_multi_horizon_price(price_data, predictors, is_crypto, price_window):
+    """
+    Trains regressors and classifiers across multiple horizons to forecast future prices.
+    Uses quantile regression to construct the expected range bounds.
+    """
+    horizons = [1, 7, 30, 90, 180, 270, 365] if is_crypto else [1, 5, 21, 63, 126, 189, 252]
+    labels = ["Next_Day", "Next_Week", "Next_Month", "Next_3_Months", "Next_6_Months", "Next_9_Months", "Next_Year"]
+    
+    # Trim the dataset to the requested training window length (plus any needed buffers)
+    price_data = price_data.iloc[-(price_window + 1):].copy()
+    
+    # Extract the last row as the anchor point to forecast from
+    test_row = price_data.iloc[-1:].copy()
+    today_close = float(test_row["Close"].values[0])
+    
+    results = {}
+    test_fit_dates = []
+    test_fit_prices = []
+    horizon_anchors = {0: today_close}
+    horizon_anchors_lower = {0: today_close}
+    horizon_anchors_upper = {0: today_close}
+    
+    for h_days, label in zip(horizons, labels):
+        col_reg = f"Target_{h_days}"
+        col_class = f"Class_{h_days}"
+        
+        price_data[col_reg] = np.log(price_data["Close"].shift(-h_days) / price_data["Close"])
+        price_data[col_class] = (price_data[col_reg] > 0).astype(int)
+        
+        is_short_term = h_days <= 30
+        
+        # Restrict tree depth and learning rate for short-term horizons to prevent overfitting
+        lr = 0.02 if is_short_term else 0.05
+        md = 5 if is_short_term else 10
+        msl = 20 if is_short_term else 10
+        
+        valid_all = price_data.iloc[:-1].dropna(subset=predictors + [col_reg, col_class])
+        clf_base = HistGradientBoostingClassifier(
+            learning_rate=lr, max_depth=md, min_samples_leaf=msl, max_iter=200,
+            class_weight="balanced", random_state=1
+        )
+        
+        reg_median = HistGradientBoostingRegressor(
+            loss='quantile', quantile=0.5, learning_rate=lr, max_depth=md, min_samples_leaf=msl, max_iter=200, random_state=1
+        )
+        reg_lower = HistGradientBoostingRegressor(
+            loss='quantile', quantile=0.1, learning_rate=lr, max_depth=md, min_samples_leaf=msl, max_iter=200, random_state=1
+        )
+        reg_upper = HistGradientBoostingRegressor(
+            loss='quantile', quantile=0.9, learning_rate=lr, max_depth=md, min_samples_leaf=msl, max_iter=200, random_state=1
+        )
+        
+        if len(valid_all) > 15:
+            class_counts = valid_all[col_class].value_counts()
+            min_class_count = class_counts.min() if len(class_counts) > 1 else 0
+            
+            if min_class_count >= 2:
+                cv_folds = min(3, min_class_count)
+                clf = CalibratedClassifierCV(estimator=clf_base, method='isotonic', cv=cv_folds)
+            else:
+                clf = clf_base
+                
+            clf.fit(valid_all[predictors], valid_all[col_class])
+            reg_median.fit(valid_all[predictors], valid_all[col_reg])
+            reg_lower.fit(valid_all[predictors], valid_all[col_reg])
+            reg_upper.fit(valid_all[predictors], valid_all[col_reg])
+            
+            if h_days == 1:
+                test_preds = reg_median.predict(valid_all[predictors])
+                test_fit_prices = [round(float(x), 2) for x in (valid_all["Close"].values * np.exp(test_preds))]
+                if is_crypto:
+                    shifted_idx = valid_all.index + pd.Timedelta(days=1)
+                else:
+                    us_bday = _get_us_bday()
+                    shifted_idx = pd.DatetimeIndex([d + us_bday for d in valid_all.index])
+                test_fit_dates = shifted_idx.strftime('%Y-%m-%d').tolist()
+            
+            metrics = extract_quantiles_metrics(clf, reg_median, reg_lower, reg_upper, test_row, predictors, today_close)
+        else:
+            # Insufficient data. Return empty results to trigger UI fallback.
+            results = {}
+            horizon_anchors = {0: today_close}
+            horizon_anchors_lower = {0: today_close}
+            horizon_anchors_upper = {0: today_close}
+            test_fit_dates = []
+            test_fit_prices = []
+            break
+            
+        results[label] = metrics
+        horizon_anchors[h_days] = metrics["Amount"]
+        horizon_anchors_lower[h_days] = metrics["Amount_Lower"]
+        horizon_anchors_upper[h_days] = metrics["Amount_Upper"]
 
-def run_real_time_model(ticker, price_window=1260, div_window=20):
-    """The main orchestrator that runs all the individual machine learning steps and packages the final results to send to the frontend."""
-    data = _fetch_data(ticker)
-    if data is None:
+    return results, horizon_anchors, horizon_anchors_lower, horizon_anchors_upper, test_fit_dates, test_fit_prices
+
+def _train_multi_horizon_div(divs, div_predictors, div_window):
+    """
+    Trains regressors and classifiers to forecast future dividend payouts.
+    Uses quantile regression to construct expected range bounds.
+    """
+    labels = ["Next_Payout", "Payout_2", "Payout_3", "Payout_4", "Payout_5"]
+    
+    # Trim the dataset to the requested training window length
+    effective_div_window = min(div_window, len(divs) - 1)
+    divs = divs.iloc[-(effective_div_window + 1):].copy()
+    
+    # Extract the last row as the anchor point to forecast from
+    test_row = divs.iloc[-1:].copy()
+    
+    today_div = float(test_row["Dividends"].values[0])
+    results = {}
+    test_fit_dates = []
+    test_fit_amounts = []
+    horizon_anchors = {0: today_div}
+    horizon_anchors_lower = {0: today_div}
+    horizon_anchors_upper = {0: today_div}
+    
+    avg_days = divs.index.to_series().diff().mean().days
+    if pd.isna(avg_days): avg_days = 90
+    
+    for h_payouts, label in enumerate(labels, start=1):
+        col_reg = f"Target_{h_payouts}"
+        col_class = f"Class_{h_payouts}"
+        
+        divs[col_reg] = np.log(divs["Dividends"].shift(-h_payouts) / divs["Dividends"])
+        divs[col_class] = (divs[col_reg] > 0).astype(int)
+        
+        valid_all = divs.iloc[:-1].dropna(subset=div_predictors + [col_reg, col_class])
+        clf_base = HistGradientBoostingClassifier(
+            learning_rate=0.05, max_depth=6, min_samples_leaf=3, max_iter=150,
+            class_weight="balanced", random_state=1
+        )
+        
+        reg_median = HistGradientBoostingRegressor(
+            loss='quantile', quantile=0.5, learning_rate=0.05, max_depth=6, min_samples_leaf=3, max_iter=150, random_state=1
+        )
+        reg_lower = HistGradientBoostingRegressor(
+            loss='quantile', quantile=0.1, learning_rate=0.05, max_depth=6, min_samples_leaf=3, max_iter=150, random_state=1
+        )
+        reg_upper = HistGradientBoostingRegressor(
+            loss='quantile', quantile=0.9, learning_rate=0.05, max_depth=6, min_samples_leaf=3, max_iter=150, random_state=1
+        )
+        
+        if len(valid_all) >= 10:
+            class_counts = valid_all[col_class].value_counts()
+            min_class_count = class_counts.min() if len(class_counts) > 1 else 0
+            
+            if min_class_count >= 2:
+                cv_folds = min(3, min_class_count)
+                clf = CalibratedClassifierCV(estimator=clf_base, method='isotonic', cv=cv_folds)
+            else:
+                clf = clf_base
+                
+            clf.fit(valid_all[div_predictors], valid_all[col_class])
+            reg_median.fit(valid_all[div_predictors], valid_all[col_reg])
+            reg_lower.fit(valid_all[div_predictors], valid_all[col_reg])
+            reg_upper.fit(valid_all[div_predictors], valid_all[col_reg])
+            
+            if h_payouts == 1 and not valid_all.empty:
+                test_preds = reg_median.predict(valid_all[div_predictors])
+                test_fit_amounts = [round(float(x), 2) for x in (valid_all["Dividends"].values * np.exp(test_preds))]
+                
+                idx_positions = [divs.index.get_loc(idx) + 1 for idx in valid_all.index]
+                for p in idx_positions:
+                    if p < len(divs):
+                        test_fit_dates.append(divs.index[p].strftime('%Y-%m-%d'))
+                    else:
+                        test_fit_dates.append((divs.index[-1] + pd.Timedelta(days=avg_days)).strftime('%Y-%m-%d'))
+                        
+            metrics = extract_quantiles_metrics(clf, reg_median, reg_lower, reg_upper, test_row, div_predictors, today_div)
+        else:
+            # Insufficient data. Return empty results to trigger UI fallback.
+            results = {}
+            horizon_anchors = {0: today_div}
+            horizon_anchors_lower = {0: today_div}
+            horizon_anchors_upper = {0: today_div}
+            test_fit_dates = []
+            test_fit_amounts = []
+            break
+            
+        results[label] = metrics
+        horizon_anchors[h_payouts] = metrics["Amount"]
+        horizon_anchors_lower[h_payouts] = metrics["Amount_Lower"]
+        horizon_anchors_upper[h_payouts] = metrics["Amount_Upper"]
+
+    return results, horizon_anchors, horizon_anchors_lower, horizon_anchors_upper, test_fit_dates, test_fit_amounts
+
+def generate_future_chart_data(horizon_anchors, anchors_lower, anchors_upper, anchor_date, is_crypto, is_div=False, avg_days_between=90):
+    """
+    Interpolates linearly between forecasted horizon anchor points (e.g., 1 day, 1 week, 1 month, 1 year) 
+    to generate continuous line data for rendering charts on the frontend.
+    """
+    if len(horizon_anchors) <= 1:
+        return [], [], [], []
+        
+    if is_div:
+        all_future_dates = [anchor_date + pd.Timedelta(days=avg_days_between * i) for i in range(1, 6)]
+        keys = [1, 2, 3, 4, 5]
+    else:
+        if is_crypto:
+            all_future_dates = pd.date_range(start=anchor_date + pd.Timedelta(days=1), periods=365, freq='D')
+        else:
+            us_bday = _get_us_bday()
+            all_future_dates = pd.date_range(start=anchor_date + us_bday, periods=252, freq=us_bday)
+        keys = list(range(1, len(all_future_dates) + 1))
+
+    pts_median = sorted(horizon_anchors.items())
+    pts_lower = sorted(anchors_lower.items())
+    pts_upper = sorted(anchors_upper.items())
+
+    def interp_amount(t, anchors):
+        for i in range(len(anchors) - 1):
+            t0, p0 = anchors[i]
+            t1, p1 = anchors[i + 1]
+            if t0 <= t <= t1:
+                frac = (t - t0) / (t1 - t0)
+                return float(np.exp(np.log(p0) + frac * (np.log(p1) - np.log(p0))))
+        return anchors[-1][1]
+
+    dates, prices, upper, lower = [], [], [], []
+    for i, t in enumerate(keys):
+        amount_t = round(interp_amount(t, pts_median), 2)
+        lower_bound = round(interp_amount(t, pts_lower), 2)
+        upper_bound = round(interp_amount(t, pts_upper), 2)
+        
+        dates.append(all_future_dates[i].strftime('%Y-%m-%d'))
+        prices.append(amount_t)
+        upper.append(upper_bound)
+        lower.append(lower_bound)
+
+    return dates, prices, upper, lower
+
+def run_real_time_model(ticker, price_window=1260, div_window=25, is_crypto=False):
+    """
+    Main orchestration function. Fetches data, engineers features, trains price 
+    and dividend forecasting models, generates chart interpolations, and 
+    packages the final payload for the frontend API response.
+    """
+    # Retrieve the historical stock data using period="max" and strictly isolate necessary slices
+    price_data_raw, div_data_raw, price_window = _fetch_data(ticker, is_crypto)
+    if price_data_raw is None:
         return None
 
-    anchor_date = data.index[-1]
+    anchor_date = price_data_raw.index[-1]
     
-    # price prediction pipeline
-    price_data, predictors = _engineer_price_features(data)
-    train_price = price_data.iloc[-(price_window + 1):-1]
-    test_price = price_data.iloc[-1:].copy()
-    today_close = float(test_price["Close"].values[0])
+    # Check if we have enough historical data to run the Price ML pipeline
+    has_enough_price_data = len(price_data_raw) >= (price_window + (365 if is_crypto else 252))
     
-    price_direction, price_conf = _train_price_classifier(train_price, test_price, predictors, ticker)
-
-    target_dates = price_data.index[-price_window:]
-    forecasted_close, train_fit_prices = _train_price_regressor(
-        train_price, test_price, predictors, price_direction, today_close, ticker, target_dates
+    if has_enough_price_data:
+        # Generate predictive features based on technical indicators for the price model
+        price_data, predictors = _engineer_price_features(price_data_raw)
+        
+        # Train the multi-horizon price forecasting models and generate predicted intervals
+        price_forecasts, p_anchors, p_lower, p_upper, train_fit_dates, train_fit_prices = _train_multi_horizon_price(
+            price_data, predictors, is_crypto, price_window
+        )
+    else:
+        price_forecasts = {}
+        last_price = float(price_data_raw.iloc[-1]["Close"])
+        p_anchors = {0: last_price}
+        p_lower = {0: last_price}
+        p_upper = {0: last_price}
+        train_fit_dates, train_fit_prices = [], []
+    
+    # Create the coordinate map for the unified frontend chart data
+    chart_future_dates, chart_future_prices, chart_future_upper, chart_future_lower = generate_future_chart_data(
+        p_anchors, p_lower, p_upper, anchor_date, is_crypto, is_div=False
     )
-    
-    # Align training fit prices with their respective T+1 forecast dates
-    train_fit_dates = target_dates.strftime('%Y-%m-%d').tolist()
 
-    chart_future_dates, chart_future_prices, chart_future_upper, chart_future_lower, extended_forecasts = (
-        _forecast_price_long_term(price_data, test_price, predictors, today_close, forecasted_close, price_window, anchor_date)
-    )
-
-    # dividend prediction pipeline
-    divs, div_predictors, next_dividend_date, today_div = _engineer_div_features(data, anchor_date)
+    # Process and isolate the historical dividend data and associated predictors from the custom dividend slice
+    divs, div_predictors, next_dividend_date = _engineer_div_features(div_data_raw, anchor_date, div_window)
     
-    div_direction = None
-    div_conf = 0.0
-    forecasted_div = "N/A"
+    div_forecasts = {}
     div_future_dates, div_future_amounts = [], []
     div_future_upper, div_future_lower = [], []
-    div_extended_forecasts = {}
     train_fit_div_dates, train_fit_div_amounts = [], []
 
     if divs is not None:
+        # Determine the average time interval between payouts to project future dates
         avg_days_between = divs.index.to_series().diff().mean().days
         if pd.isna(avg_days_between) or avg_days_between <= 0:
             avg_days_between = 90 
             
-        train_div = divs.iloc[-(div_window + 1):-1]
-        test_div = divs.iloc[-1:].copy()
-
-        div_direction, div_conf = _train_div_classifier(train_div, test_div, div_predictors)
-        
-        # Capture the training fit amounts and extract the target dates
-        forecasted_div, train_fit_div_amounts = _train_div_regressor(train_div, test_div, div_predictors, div_direction, today_div)
-        train_fit_div_dates = divs.index[-len(train_fit_div_amounts):].strftime('%Y-%m-%d').tolist()
-
-        div_future_dates, div_future_amounts, div_future_upper, div_future_lower, div_extended_forecasts = (
-            _forecast_div_long_term(divs, div_predictors, test_div, today_div, forecasted_div, next_dividend_date, avg_days_between, div_window)
+        # Train the multi-horizon dividend forecasting models and generate predicted intervals
+        div_forecasts, d_anchors, d_lower, d_upper, train_fit_div_dates, train_fit_div_amounts = _train_multi_horizon_div(
+            divs, div_predictors, div_window
         )
+        
+        # Create the coordinate map for the frontend dividend chart
+        div_future_dates, div_future_amounts, div_future_upper, div_future_lower = generate_future_chart_data(
+            d_anchors, d_lower, d_upper, anchor_date, is_crypto, is_div=True, avg_days_between=avg_days_between
+        )
+        
+        train_fit_div_dates = train_fit_div_dates[-5:]
+        train_fit_div_amounts = train_fit_div_amounts[-5:]
 
+    # Trim price chart training points to past 1 year for rendering efficiency
+    days_in_year = 365 if is_crypto else 252
+    train_fit_dates = train_fit_dates[-days_in_year:]
+    train_fit_prices = train_fit_prices[-days_in_year:]
 
-    # Package the final results from both pipelines
+    # Retrieve the formatted historical chart data for immediate visualization using the price data
+    chart_history = get_chart_data(
+        price_data=price_data_raw, 
+        div_data=div_data_raw,
+        is_crypto=is_crypto, 
+        show_all_prices=not has_enough_price_data, 
+        show_all_divs=(divs is None)
+    )
+
+    # Package and return all data structures to be serialized by the API
     return {
         "anchor_date": anchor_date,
-        "today_close": today_close,
-        "price_direction": price_direction,
-        "price_conf": price_conf,
-        "forecasted_close": forecasted_close,
+        "today_close": float(price_data_raw["Close"].iloc[-1]),
         "next_dividend_date": next_dividend_date,
-        "div_direction": div_direction,
-        "div_conf": div_conf,
-        "forecasted_div": forecasted_div,
-        "extended_forecasts": extended_forecasts,
+        
+        "price_forecasts": price_forecasts,
         "chart_future_dates": chart_future_dates,
         "chart_future_prices": chart_future_prices,
         "chart_future_upper": chart_future_upper,
         "chart_future_lower": chart_future_lower,
         "train_fit_dates": train_fit_dates,
         "train_fit_prices": train_fit_prices,
-        "div_extended_forecasts": div_extended_forecasts,
+        
+        "div_forecasts": div_forecasts,
         "div_future_dates": div_future_dates,
         "div_future_amounts": div_future_amounts,
         "div_future_upper": div_future_upper,
         "div_future_lower": div_future_lower,
         "train_fit_div_dates": train_fit_div_dates,
         "train_fit_div_amounts": train_fit_div_amounts,
+        
+        "chart_history": chart_history
     }

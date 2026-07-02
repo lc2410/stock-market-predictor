@@ -69,34 +69,30 @@ def test_search_endpoint_exception(mock_get, client):
 
 # Predict Endpoint Tests
 @patch('backend.apis.routes.run_real_time_model')
-@patch('backend.apis.routes.get_chart_data')
 @patch('backend.apis.routes.yf.Ticker')
-def test_predict_endpoint_success(mock_ticker, mock_get_chart_data, mock_run_real_time_model, client):
+def test_predict_endpoint_success(mock_ticker, mock_run_real_time_model, client):
     """Verifies the API safely processes successful standard equity predictions."""
     mock_ml_data = {
         "anchor_date": pd.Timestamp("2026-06-12"),
         "today_close": 150.0,
-        "price_direction": 1,
-        "price_conf": 0.855,
-        "forecasted_close": 152.0,
+        "price_forecasts": {
+            "Next_Day": {"Direction": "Up", "Direction_Confidence": 85.5, "Amount": 152.0, "Amount_Confidence": 90.0}
+        },
         "next_dividend_date": pd.NaT,
-        "div_direction": None,
-        "div_conf": 0.0,
-        "forecasted_div": "N/A",
-        "extended_forecasts": {},
+        "div_forecasts": {},
         "chart_future_dates": [], "chart_future_prices": [], "chart_future_upper": [], "chart_future_lower": [],
         "train_fit_dates": [], "train_fit_prices": [],
-        "div_extended_forecasts": {}, "div_future_dates": [], "div_future_amounts": [], "div_future_upper": [], "div_future_lower": [],
-        "train_fit_div_dates": [], "train_fit_div_amounts": []
+        "div_future_dates": [], "div_future_amounts": [], "div_future_upper": [], "div_future_lower": [],
+        "train_fit_div_dates": [], "train_fit_div_amounts": [],
+        "chart_history": {"dates": ["2026-06-12"], "prices": [148.0], "dividend_dates": [], "dividend_amounts": []}
     }
     mock_run_real_time_model.return_value = mock_ml_data
-    mock_get_chart_data.return_value = {"dates": ["2026-06-12"], "prices": [148.0], "dividend_dates": [], "dividend_amounts": []}
 
     mock_instance = MagicMock()
     mock_instance.info = {"longName": "Apple Inc.", "quoteType": "EQUITY", "recommendationKey": "buy"}
     mock_ticker.return_value = mock_instance
     
-    with patch('backend.apis.routes.fetch_news_sentiment') as mock_sentiment:
+    with patch('backend.apis.routes.analyze_news_sentiment') as mock_sentiment:
         mock_sentiment.return_value = (0.5, {"positive": ["Good"]})
         
         response = client.get('/predict/AAPL')
@@ -109,28 +105,26 @@ def test_predict_endpoint_success(mock_ticker, mock_get_chart_data, mock_run_rea
         assert json_data['Stock_Grade'] in ["A+", "A", "B", "C", "D", "F"]
 
 @patch('backend.apis.routes.run_real_time_model')
-@patch('backend.apis.routes.get_chart_data')
 @patch('backend.apis.routes.yf.Ticker')
-def test_predict_endpoint_etf_success(mock_ticker, mock_get_chart_data, mock_run_real_time_model, client):
+def test_predict_endpoint_etf_success(mock_ticker, mock_run_real_time_model, client):
     """Verifies the API accurately parses ETF Holdings, Sectors, and formats Downward/Dividend logic."""
     mock_ml_data = {
         "anchor_date": pd.Timestamp("2026-06-12"),
         "today_close": 150.0,
-        "price_direction": 0,
-        "price_conf": 0.60,
-        "forecasted_close": 148.0,
+        "price_forecasts": {
+            "Next_Day": {"Direction": "Down", "Direction_Confidence": 60.0, "Amount": 148.0, "Amount_Confidence": 50.0}
+        },
         "next_dividend_date": pd.Timestamp("2026-07-01"),
-        "div_direction": 1,
-        "div_conf": 0.90,
-        "forecasted_div": 1.5,
-        "extended_forecasts": {},
+        "div_forecasts": {
+            "Next_Payout": {"Direction": "Up", "Direction_Confidence": 90.0, "Amount": 1.5, "Amount_Confidence": 80.0}
+        },
         "chart_future_dates": [], "chart_future_prices": [], "chart_future_upper": [], "chart_future_lower": [],
         "train_fit_dates": [], "train_fit_prices": [],
-        "div_extended_forecasts": {}, "div_future_dates": [], "div_future_amounts": [], "div_future_upper": [], "div_future_lower": [],
-        "train_fit_div_dates": [], "train_fit_div_amounts": []
+        "div_future_dates": [], "div_future_amounts": [], "div_future_upper": [], "div_future_lower": [],
+        "train_fit_div_dates": [], "train_fit_div_amounts": [],
+        "chart_history": {"dates": [], "prices": [], "dividend_dates": [], "dividend_amounts": []}
     }
     mock_run_real_time_model.return_value = mock_ml_data
-    mock_get_chart_data.return_value = {"dates": [], "prices": [], "dividend_dates": [], "dividend_amounts": []}
 
     mock_instance = MagicMock()
     mock_instance.info = {"quoteType": "ETF"}
@@ -144,7 +138,7 @@ def test_predict_endpoint_etf_success(mock_ticker, mock_get_chart_data, mock_run
     
     mock_ticker.return_value = mock_instance
     
-    with patch('backend.apis.routes.fetch_news_sentiment') as mock_sentiment:
+    with patch('backend.apis.routes.analyze_news_sentiment') as mock_sentiment:
         mock_sentiment.return_value = (0.5, {"positive": ["Good"]})
         
         response = client.get('/predict/VOO')
@@ -152,8 +146,8 @@ def test_predict_endpoint_etf_success(mock_ticker, mock_get_chart_data, mock_run
         json_data = response.get_json()
         
         # Verify formatting triggers 
-        assert json_data['Price_Predicted'] == "Down"
-        assert json_data['Div_Predicted'] == "Up"
+        assert json_data['Price_Forecasts']['Next_Day']['Direction'] == "Down"
+        assert json_data['Div_Forecasts']['Next_Payout']['Direction'] == "Up"
         assert json_data['Next_Dividend_Date'] == "2026-07-01"
 
         # Verify ETF Sector & Holdings logic parsed successfully
@@ -165,21 +159,23 @@ def test_predict_endpoint_etf_success(mock_ticker, mock_get_chart_data, mock_run
         assert len(reasoning['etf_sectors']) > 0
 
 @patch('backend.apis.routes.run_real_time_model')
-@patch('backend.apis.routes.get_chart_data')
 @patch('backend.apis.routes.yf.Ticker')
-def test_predict_endpoint_info_exception(mock_ticker, mock_get_chart_data, mock_run_real_time_model, client):
+def test_predict_endpoint_info_exception(mock_ticker, mock_run_real_time_model, client):
     """Verifies the API doesn't crash if Yahoo Finance's info dictionary fails to load."""
     mock_run_real_time_model.return_value = {
-        "anchor_date": pd.Timestamp("2026-06-12"), "today_close": 150.0, "price_direction": 1, "price_conf": 0.8, "forecasted_close": 152.0, "next_dividend_date": pd.NaT, "div_direction": 0, "div_conf": 0.0, "forecasted_div": "N/A", "extended_forecasts": {}, "chart_future_dates": [], "chart_future_prices": [], "chart_future_upper": [], "chart_future_lower": [], "train_fit_dates": [], "train_fit_prices": [], "div_extended_forecasts": {}, "div_future_dates": [], "div_future_amounts": [], "div_future_upper": [], "div_future_lower": [], "train_fit_div_dates": [], "train_fit_div_amounts": []
+        "anchor_date": pd.Timestamp("2026-06-12"), "today_close": 150.0,
+        "price_forecasts": {"Next_Day": {"Direction": "Up", "Direction_Confidence": 80.0, "Amount": 152.0, "Amount_Confidence": 80.0}},
+        "next_dividend_date": pd.NaT, "div_forecasts": {},
+        "chart_future_dates": [], "chart_future_prices": [], "chart_future_upper": [], "chart_future_lower": [], "train_fit_dates": [], "train_fit_prices": [], "div_future_dates": [], "div_future_amounts": [], "div_future_upper": [], "div_future_lower": [], "train_fit_div_dates": [], "train_fit_div_amounts": [],
+        "chart_history": {"dates": [], "prices": [], "dividend_dates": [], "dividend_amounts": []}
     }
-    mock_get_chart_data.return_value = {"dates": [], "prices": [], "dividend_dates": [], "dividend_amounts": []}
 
     mock_instance = MagicMock()
     # Simulate property access throwing an error
     type(mock_instance).info = PropertyMock(side_effect=Exception("API limit reached"))
     mock_ticker.return_value = mock_instance
     
-    with patch('backend.apis.routes.fetch_news_sentiment') as mock_sentiment:
+    with patch('backend.apis.routes.analyze_news_sentiment') as mock_sentiment:
         mock_sentiment.return_value = (0.0, {"neutral": "No news"})
         response = client.get('/predict/AAPL')
         
@@ -188,14 +184,16 @@ def test_predict_endpoint_info_exception(mock_ticker, mock_get_chart_data, mock_
         assert response.get_json()['Ticker'] == 'AAPL'
 
 @patch('backend.apis.routes.run_real_time_model')
-@patch('backend.apis.routes.get_chart_data')
 @patch('backend.apis.routes.yf.Ticker')
-def test_predict_endpoint_etf_parsing_exception(mock_ticker, mock_get_chart_data, mock_run_real_time_model, client):
+def test_predict_endpoint_etf_parsing_exception(mock_ticker, mock_run_real_time_model, client):
     """Verifies that an error inside the ETF holdings parser doesn't crash the pipeline."""
     mock_run_real_time_model.return_value = {
-        "anchor_date": pd.Timestamp("2026-06-12"), "today_close": 150.0, "price_direction": 1, "price_conf": 0.8, "forecasted_close": 152.0, "next_dividend_date": pd.NaT, "div_direction": -1, "div_conf": 0.0, "forecasted_div": "N/A", "extended_forecasts": {}, "chart_future_dates": [], "chart_future_prices": [], "chart_future_upper": [], "chart_future_lower": [], "train_fit_dates": [], "train_fit_prices": [], "div_extended_forecasts": {}, "div_future_dates": [], "div_future_amounts": [], "div_future_upper": [], "div_future_lower": [], "train_fit_div_dates": [], "train_fit_div_amounts": []
+        "anchor_date": pd.Timestamp("2026-06-12"), "today_close": 150.0,
+        "price_forecasts": {"Next_Day": {"Direction": "Up", "Direction_Confidence": 80.0, "Amount": 152.0, "Amount_Confidence": 80.0}},
+        "next_dividend_date": pd.NaT, "div_forecasts": {},
+        "chart_future_dates": [], "chart_future_prices": [], "chart_future_upper": [], "chart_future_lower": [], "train_fit_dates": [], "train_fit_prices": [], "div_future_dates": [], "div_future_amounts": [], "div_future_upper": [], "div_future_lower": [], "train_fit_div_dates": [], "train_fit_div_amounts": [],
+        "chart_history": {"dates": [], "prices": [], "dividend_dates": [], "dividend_amounts": []}
     }
-    mock_get_chart_data.return_value = {"dates": [], "prices": [], "dividend_dates": [], "dividend_amounts": []}
 
     mock_instance = MagicMock()
     mock_instance.info = {"quoteType": "MUTUALFUND"}
@@ -204,7 +202,7 @@ def test_predict_endpoint_etf_parsing_exception(mock_ticker, mock_get_chart_data
     type(mock_instance).funds_data = PropertyMock(side_effect=Exception("Corrupt fund data"))
     mock_ticker.return_value = mock_instance
     
-    with patch('backend.apis.routes.fetch_news_sentiment') as mock_sentiment:
+    with patch('backend.apis.routes.analyze_news_sentiment') as mock_sentiment:
         mock_sentiment.return_value = (0.0, {"neutral": "No news"})
         response = client.get('/predict/FXAIX')
         
@@ -280,3 +278,98 @@ def test_sanitize_pandas_types():
     
     assert result["Missing_Date"] is None
     assert result["Missing_Value"] is None
+
+import json
+
+# Stream Endpoint Tests
+@patch('backend.apis.routes.run_real_time_model')
+@patch('backend.apis.routes.yf.Ticker')
+def test_predict_stream_endpoint_success(mock_ticker, mock_run_real_time_model, client):
+    """Verifies the streaming API safely processes successful standard equity predictions."""
+    mock_ml_data = {
+        "anchor_date": pd.Timestamp("2026-06-12"),
+        "today_close": 150.0,
+        "price_forecasts": {
+            "Next_Day": {"Direction": "Up", "Direction_Confidence": 85.5, "Amount": 152.0, "Amount_Confidence": 90.0}
+        },
+        "next_dividend_date": pd.NaT,
+        "div_forecasts": {},
+        "chart_future_dates": [], "chart_future_prices": [], "chart_future_upper": [], "chart_future_lower": [],
+        "train_fit_dates": [], "train_fit_prices": [],
+        "div_future_dates": [], "div_future_amounts": [], "div_future_upper": [], "div_future_lower": [],
+        "train_fit_div_dates": [], "train_fit_div_amounts": [],
+        "chart_history": {"dates": ["2026-06-12"], "prices": [148.0], "dividend_dates": [], "dividend_amounts": []}
+    }
+    mock_run_real_time_model.return_value = mock_ml_data
+
+    mock_instance = MagicMock()
+    mock_instance.info = {"longName": "Apple Inc.", "quoteType": "EQUITY", "recommendationKey": "buy"}
+    mock_ticker.return_value = mock_instance
+    
+    with patch('backend.apis.routes.analyze_news_sentiment') as mock_sentiment:
+        mock_sentiment.return_value = (0.5, {"positive": ["Good"]})
+        
+        response = client.get('/predict_stream/AAPL')
+        assert response.status_code == 200
+        assert response.mimetype == 'text/event-stream'
+        
+        text = response.get_data(as_text=True)
+        events = [json.loads(line.replace('data: ', '')) for line in text.split('\n\n') if line.startswith('data: ')]
+        
+        assert len(events) > 0
+        final_event = events[-1]
+        assert final_event['status'] == 'complete'
+        assert final_event['result']['Ticker'] == 'AAPL'
+
+@patch('backend.apis.routes.run_real_time_model')
+def test_predict_stream_endpoint_not_found(mock_run_real_time_model, client):
+    """Verifies the streaming API handles invalid tickers/insufficient data."""
+    mock_run_real_time_model.return_value = None
+
+    response = client.get('/predict_stream/INVALID')
+    text = response.get_data(as_text=True)
+    events = [json.loads(line.replace('data: ', '')) for line in text.split('\n\n') if line.startswith('data: ')]
+    
+    final_event = events[-1]
+    assert final_event['status'] == 'error'
+    assert "Invalid ticker" in final_event['error']
+
+@patch('backend.apis.routes.run_real_time_model')
+def test_predict_stream_endpoint_internal_error(mock_run_real_time_model, client):
+    """Verifies the streaming API catches catastrophic pipeline failures."""
+    mock_run_real_time_model.side_effect = Exception("Catastrophic ML failure")
+
+    response = client.get('/predict_stream/CRASH')
+    text = response.get_data(as_text=True)
+    events = [json.loads(line.replace('data: ', '')) for line in text.split('\n\n') if line.startswith('data: ')]
+    
+    final_event = events[-1]
+    assert final_event['status'] == 'error'
+    assert "internal server error" in final_event['error']
+
+@patch('backend.apis.routes.yf.Ticker')
+def test_predict_stream_endpoint_info_exception(mock_ticker, client):
+    """Verifies the stream gracefully handles info fetch exceptions."""
+    mock_instance = MagicMock()
+    type(mock_instance).info = PropertyMock(side_effect=Exception("API limit reached"))
+    mock_ticker.return_value = mock_instance
+    
+    with patch('backend.apis.routes.run_real_time_model') as mock_run:
+        mock_run.side_effect = Exception("Crash")
+        response = client.get('/predict_stream/INFOEXCEPT')
+        text = response.get_data(as_text=True)
+        events = [json.loads(line.replace('data: ', '')) for line in text.split('\n\n') if line.startswith('data: ')]
+        assert events[-1]['status'] == 'error'
+
+def test_predict_stream_cache(client):
+    """Verifies the streaming API uses cache if available."""
+    from backend.apis.routes import forecast_cache
+    forecast_cache['CACHED'] = {"Ticker": "CACHED", "fake": "data"}
+    
+    response = client.get('/predict_stream/CACHED')
+    text = response.get_data(as_text=True)
+    events = [json.loads(line.replace('data: ', '')) for line in text.split('\n\n') if line.startswith('data: ')]
+    
+    assert len(events) == 1
+    assert events[0]['status'] == 'complete'
+    assert events[0]['result']['Ticker'] == 'CACHED'
