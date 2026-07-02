@@ -29,7 +29,10 @@ stock-market-predictor/
 ├── backend/
 │   ├── apis/                 # Flask routing and API endpoints
 │   ├── models/               # Scikit-learn ML pipeline & data fetching
-│   └── tests/                # Pytest unit and integration test suite
+│   │   ├── assets/           # ML model assets and weights
+│   │   ├── scripts/          # Model download scripts
+│   │   └── utils/            # Helper utilities and shared logic
+│   └── tests/                # Pytest unit and integration test suite (mirrors backend structure)
 ├── frontend/
 │   ├── scripts/              # Vanilla JS, DOM manipulation, and Chart.js logic
 │   ├── styles/               # UI styling and layout

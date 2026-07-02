@@ -3,8 +3,8 @@ from huggingface_hub import snapshot_download
 
 def download_finbert():
     print("Downloading ProsusAI/finbert model weights locally...")
-    # Save the model inside backend/models/finbert_weights
-    model_dir = os.path.join(os.path.dirname(__file__), "finbert_weights")
+    # Save the model inside backend/models/assets/finbert_weights
+    model_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "finbert_weights")
     os.makedirs(model_dir, exist_ok=True)
     
     # Download the PyTorch safetensors and configs, skip heavy unused formats

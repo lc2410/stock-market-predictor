@@ -5,7 +5,9 @@ import logging
 import pandas as pd
 import yfinance as yf
 from cachetools import cached, TTLCache
-from backend.models.forecast_model import run_real_time_model, get_chart_data, _get_us_bday
+from backend.models.utils.forecasting_model_utils import get_us_bday, fetch_data, get_chart_data, generate_future_chart_data
+from backend.models.price_forecasting import run_price_prediction
+from backend.models.dividend_forecasting import run_dividend_prediction
 from backend.models.sentiment_analysis import analyze_news_sentiment, calculate_asset_grade
 
 api_bp = Blueprint('api', __name__)
@@ -38,7 +40,7 @@ def build_frontend_payload(ticker, raw_ml_data, chart_history, nlp_data, info, i
     if is_crypto:
         next_trading_day = (raw_ml_data["anchor_date"] + pd.Timedelta(days=1)).strftime('%Y-%m-%d')
     else:
-        next_trading_day = (raw_ml_data["anchor_date"] + _get_us_bday()).strftime('%Y-%m-%d')
+        next_trading_day = (raw_ml_data["anchor_date"] + get_us_bday()).strftime('%Y-%m-%d')
 
     next_div_date = raw_ml_data["next_dividend_date"].strftime('%Y-%m-%d') if pd.notna(raw_ml_data["next_dividend_date"]) else "N/A"
 
@@ -155,11 +157,59 @@ def predict(ticker):
         info, is_fund, is_crypto, top_holdings, top_sectors = _fetch_company_fundamentals(safe_ticker)
 
         # Run Quantitative ML
-        raw_ml_data = run_real_time_model(safe_ticker, is_crypto=is_crypto)
-        if raw_ml_data is None:
+        price_data_raw, div_data_raw = fetch_data(safe_ticker, target_window=1260, is_crypto=is_crypto)
+        if price_data_raw is None:
             return jsonify({"error": f"Invalid ticker or insufficient data for {safe_ticker}."}), 404
+            
+        anchor_date = price_data_raw.index[-1]
+        today_close = float(price_data_raw["Close"].iloc[-1])
+
+        # Run Price ML
+        price_results = run_price_prediction(price_data_raw, is_crypto=is_crypto, price_window=1260)
+        chart_future_dates, chart_future_prices, chart_future_upper, chart_future_lower = generate_future_chart_data(
+            price_results["p_anchors"], price_results["p_lower"], price_results["p_upper"], anchor_date, is_crypto, is_div=False
+        )
+
+        # Run Dividend ML
+        div_results = run_dividend_prediction(div_data_raw, anchor_date, div_window=25)
+        div_future_dates, div_future_amounts, div_future_upper, div_future_lower = generate_future_chart_data(
+            div_results["d_anchors"], div_results["d_lower"], div_results["d_upper"], anchor_date, is_crypto, is_div=True, avg_days_between=div_results["avg_days_between"]
+        )
         
-        chart_history = raw_ml_data["chart_history"]
+        train_fit_div_dates = div_results["train_fit_div_dates"][-5:] if div_results["has_enough_div_data"] else []
+        train_fit_div_amounts = div_results["train_fit_div_amounts"][-5:] if div_results["has_enough_div_data"] else []
+        
+        days_in_year = 365 if is_crypto else 252
+        train_fit_dates = price_results["train_fit_dates"][-days_in_year:]
+        train_fit_prices = price_results["train_fit_prices"][-days_in_year:]
+        
+        chart_history = get_chart_data(
+            price_data=price_data_raw, 
+            div_data=div_data_raw,
+            is_crypto=is_crypto, 
+            show_all_prices=not price_results["has_enough_price_data"], 
+            show_all_divs=not div_results["has_enough_div_data"]
+        )
+        
+        raw_ml_data = {
+            "anchor_date": anchor_date,
+            "today_close": today_close,
+            "next_dividend_date": div_results["next_dividend_date"],
+            "price_forecasts": price_results["price_forecasts"],
+            "chart_future_dates": chart_future_dates,
+            "chart_future_prices": chart_future_prices,
+            "chart_future_upper": chart_future_upper,
+            "chart_future_lower": chart_future_lower,
+            "train_fit_dates": train_fit_dates,
+            "train_fit_prices": train_fit_prices,
+            "div_forecasts": div_results["div_forecasts"],
+            "div_future_dates": div_future_dates,
+            "div_future_amounts": div_future_amounts,
+            "div_future_upper": div_future_upper,
+            "div_future_lower": div_future_lower,
+            "train_fit_div_dates": train_fit_div_dates,
+            "train_fit_div_amounts": train_fit_div_amounts,
+        }
 
         # Run NLP Sentiment Analysis
         sentiment_score, news_dict = analyze_news_sentiment(safe_ticker)
@@ -215,15 +265,64 @@ def predict_stream(ticker):
             # Fetch Company Fundamentals
             info, is_fund, is_crypto, top_holdings, top_sectors = _fetch_company_fundamentals(safe_ticker)
 
-            yield f"data: {json.dumps({'status': 'processing', 'step': 'Predicting future prices', 'progress': 40})}\n\n"
-            
-            # Run Quantitative ML
-            raw_ml_data = run_real_time_model(safe_ticker, is_crypto=is_crypto)
-            if raw_ml_data is None:
+            price_data_raw, div_data_raw = fetch_data(safe_ticker, target_window=1260, is_crypto=is_crypto)
+            if price_data_raw is None:
                 yield f"data: {json.dumps({'status': 'error', 'error': f'Invalid ticker or insufficient data for {safe_ticker}.'})}\n\n"
                 return
+                
+            anchor_date = price_data_raw.index[-1]
+            today_close = float(price_data_raw["Close"].iloc[-1])
+
+            yield f"data: {json.dumps({'status': 'processing', 'step': 'Predicting future prices', 'progress': 30})}\n\n"
             
-            chart_history = raw_ml_data["chart_history"]
+            # Run Price ML
+            price_results = run_price_prediction(price_data_raw, is_crypto=is_crypto, price_window=1260)
+            chart_future_dates, chart_future_prices, chart_future_upper, chart_future_lower = generate_future_chart_data(
+                price_results["p_anchors"], price_results["p_lower"], price_results["p_upper"], anchor_date, is_crypto, is_div=False
+            )
+
+            yield f"data: {json.dumps({'status': 'processing', 'step': 'Predicting dividend payouts', 'progress': 45})}\n\n"
+            
+            # Run Dividend ML
+            div_results = run_dividend_prediction(div_data_raw, anchor_date, div_window=25)
+            div_future_dates, div_future_amounts, div_future_upper, div_future_lower = generate_future_chart_data(
+                div_results["d_anchors"], div_results["d_lower"], div_results["d_upper"], anchor_date, is_crypto, is_div=True, avg_days_between=div_results["avg_days_between"]
+            )
+            
+            train_fit_div_dates = div_results["train_fit_div_dates"][-5:] if div_results["has_enough_div_data"] else []
+            train_fit_div_amounts = div_results["train_fit_div_amounts"][-5:] if div_results["has_enough_div_data"] else []
+            
+            days_in_year = 365 if is_crypto else 252
+            train_fit_dates = price_results["train_fit_dates"][-days_in_year:]
+            train_fit_prices = price_results["train_fit_prices"][-days_in_year:]
+            
+            chart_history = get_chart_data(
+                price_data=price_data_raw, 
+                div_data=div_data_raw,
+                is_crypto=is_crypto, 
+                show_all_prices=not price_results["has_enough_price_data"], 
+                show_all_divs=not div_results["has_enough_div_data"]
+            )
+            
+            raw_ml_data = {
+                "anchor_date": anchor_date,
+                "today_close": today_close,
+                "next_dividend_date": div_results["next_dividend_date"],
+                "price_forecasts": price_results["price_forecasts"],
+                "chart_future_dates": chart_future_dates,
+                "chart_future_prices": chart_future_prices,
+                "chart_future_upper": chart_future_upper,
+                "chart_future_lower": chart_future_lower,
+                "train_fit_dates": train_fit_dates,
+                "train_fit_prices": train_fit_prices,
+                "div_forecasts": div_results["div_forecasts"],
+                "div_future_dates": div_future_dates,
+                "div_future_amounts": div_future_amounts,
+                "div_future_upper": div_future_upper,
+                "div_future_lower": div_future_lower,
+                "train_fit_div_dates": train_fit_div_dates,
+                "train_fit_div_amounts": train_fit_div_amounts,
+            }
 
             yield f"data: {json.dumps({'status': 'processing', 'step': 'Reading latest news', 'progress': 60})}\n\n"
             

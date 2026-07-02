@@ -3,7 +3,7 @@ import yfinance as yf
 from transformers import pipeline
 
 print("Loading FinBERT NLP Model into memory... please wait.")
-model_dir = os.path.join(os.path.dirname(__file__), "finbert_weights")
+model_dir = os.path.join(os.path.dirname(__file__), "assets", "finbert_weights")
 if os.path.exists(model_dir):
     sentiment_analyzer = pipeline("sentiment-analysis", model=model_dir)
 else:
