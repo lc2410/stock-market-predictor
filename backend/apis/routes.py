@@ -98,6 +98,51 @@ def search(query):
         logger.error(f"Search API error: {e}")
         return jsonify([])
 
+def _fetch_company_fundamentals(safe_ticker):
+    """Helper to fetch company info, determine asset type, and extract fund holdings/sectors if applicable."""
+    stock_obj = yf.Ticker(safe_ticker)
+    try:
+        info = stock_obj.info
+    except Exception:
+        info = {}
+
+    quote_type = info.get("quoteType", "").upper()
+    is_fund = quote_type in ["ETF", "MUTUALFUND"]
+    is_crypto = quote_type == "CRYPTOCURRENCY"
+    top_holdings = []
+    top_sectors = []
+    
+    if is_fund:
+        try:
+            holdings_data = stock_obj.funds_data.top_holdings
+            if holdings_data is not None and not holdings_data.empty:
+                for sym, row in holdings_data.head(10).iterrows():
+                    weight = None
+                    company_name = sym 
+                    for val in row.values:
+                        if isinstance(val, (float, int)): weight = val
+                        elif isinstance(val, str) and val.strip(): company_name = val.strip()
+                    val_str = f"{weight * 100:.2f}%" if weight is not None and weight <= 1.0 else (f"{weight:.2f}%" if weight is not None else "")
+                    top_holdings.append({"symbol": sym, "name": company_name, "weight": val_str})
+            
+            sector_data = stock_obj.funds_data.sector_weightings
+            if sector_data is not None:
+                sector_dict = sector_data.to_dict() if isinstance(sector_data, pd.Series) else sector_data
+                sorted_sectors = sorted(sector_dict.items(), key=lambda item: item[1], reverse=True)
+                for raw_sector, weight in sorted_sectors:
+                    if isinstance(weight, (float, int)) and weight > 0:
+                        clean_sec = raw_sector.replace('_', ' ').title()
+                        if clean_sec.lower() == 'realestate': clean_sec = 'Real Estate'
+                        elif clean_sec.lower() == 'basicmaterials': clean_sec = 'Basic Materials'
+                        elif clean_sec.lower() == 'financialservices': clean_sec = 'Financial Services'
+                        elif clean_sec.lower() == 'communicationservices': clean_sec = 'Communication Services'
+                        val_str = f"{weight * 100:.2f}%" if weight <= 1.0 else f"{weight:.2f}%"
+                        top_sectors.append({"sector": clean_sec, "weight": val_str})
+        except Exception as e:
+            logger.warning(f"Failed to parse Fund data: {e}")
+            
+    return info, is_fund, is_crypto, top_holdings, top_sectors
+
 @api_bp.route('/predict/<string:ticker>', methods=['GET'])
 @cached(cache=forecast_cache)
 def predict(ticker):
@@ -107,61 +152,7 @@ def predict(ticker):
     
     try:
         # Fetch Company Fundamentals
-        stock_obj = yf.Ticker(safe_ticker)
-        try:
-            info = stock_obj.info
-        except Exception:
-            info = {}
-
-        quote_type = info.get("quoteType", "").upper()
-        is_fund = quote_type in ["ETF", "MUTUALFUND"]
-        is_crypto = quote_type == "CRYPTOCURRENCY"
-        top_holdings = []
-        top_sectors = []
-        
-        if is_fund:
-            try:
-                # A. Extract Top 10 Holdings as Dictionaries
-                holdings_data = stock_obj.funds_data.top_holdings
-                if holdings_data is not None and not holdings_data.empty:
-                    for sym, row in holdings_data.head(10).iterrows():
-                        weight = None
-                        company_name = sym 
-                        
-                        for val in row.values:
-                            if isinstance(val, (float, int)): weight = val
-                            elif isinstance(val, str) and val.strip(): company_name = val.strip()
-                        
-                        # Store as structured dict
-                        val_str = f"{weight * 100:.2f}%" if weight is not None and weight <= 1.0 else (f"{weight:.2f}%" if weight is not None else "")
-                        top_holdings.append({
-                            "symbol": sym,
-                            "name": company_name,
-                            "weight": val_str
-                        })
-                
-                # B. Extract Sector Weightings as Dictionaries
-                sector_data = stock_obj.funds_data.sector_weightings
-                if sector_data is not None:
-                    sector_dict = sector_data.to_dict() if isinstance(sector_data, pd.Series) else sector_data
-                    sorted_sectors = sorted(sector_dict.items(), key=lambda item: item[1], reverse=True)
-                    
-                    for raw_sector, weight in sorted_sectors:
-                        if isinstance(weight, (float, int)) and weight > 0:
-                            clean_sec = raw_sector.replace('_', ' ').title()
-                            if clean_sec.lower() == 'realestate': clean_sec = 'Real Estate'
-                            elif clean_sec.lower() == 'basicmaterials': clean_sec = 'Basic Materials'
-                            elif clean_sec.lower() == 'financialservices': clean_sec = 'Financial Services'
-                            elif clean_sec.lower() == 'communicationservices': clean_sec = 'Communication Services'
-                            
-                            val_str = f"{weight * 100:.2f}%" if weight <= 1.0 else f"{weight:.2f}%"
-                            top_sectors.append({
-                                "sector": clean_sec,
-                                "weight": val_str
-                            })
-
-            except Exception as e:
-                logger.warning(f"Failed to parse Fund data: {e}")
+        info, is_fund, is_crypto, top_holdings, top_sectors = _fetch_company_fundamentals(safe_ticker)
 
         # Run Quantitative ML
         raw_ml_data = run_real_time_model(safe_ticker, is_crypto=is_crypto)
@@ -222,46 +213,7 @@ def predict_stream(ticker):
             yield f"data: {json.dumps({'status': 'processing', 'step': 'Gathering financial data', 'progress': 15})}\n\n"
             
             # Fetch Company Fundamentals
-            stock_obj = yf.Ticker(safe_ticker)
-            try:
-                info = stock_obj.info
-            except Exception:
-                info = {}
-
-            quote_type = info.get("quoteType", "").upper()
-            is_fund = quote_type in ["ETF", "MUTUALFUND"]
-            is_crypto = quote_type == "CRYPTOCURRENCY"
-            top_holdings = []
-            top_sectors = []
-            
-            if is_fund:
-                try:
-                    holdings_data = stock_obj.funds_data.top_holdings
-                    if holdings_data is not None and not holdings_data.empty:
-                        for sym, row in holdings_data.head(10).iterrows():
-                            weight = None
-                            company_name = sym 
-                            for val in row.values:
-                                if isinstance(val, (float, int)): weight = val
-                                elif isinstance(val, str) and val.strip(): company_name = val.strip()
-                            val_str = f"{weight * 100:.2f}%" if weight is not None and weight <= 1.0 else (f"{weight:.2f}%" if weight is not None else "")
-                            top_holdings.append({"symbol": sym, "name": company_name, "weight": val_str})
-                    
-                    sector_data = stock_obj.funds_data.sector_weightings
-                    if sector_data is not None:
-                        sector_dict = sector_data.to_dict() if isinstance(sector_data, pd.Series) else sector_data
-                        sorted_sectors = sorted(sector_dict.items(), key=lambda item: item[1], reverse=True)
-                        for raw_sector, weight in sorted_sectors:
-                            if isinstance(weight, (float, int)) and weight > 0:
-                                clean_sec = raw_sector.replace('_', ' ').title()
-                                if clean_sec.lower() == 'realestate': clean_sec = 'Real Estate'
-                                elif clean_sec.lower() == 'basicmaterials': clean_sec = 'Basic Materials'
-                                elif clean_sec.lower() == 'financialservices': clean_sec = 'Financial Services'
-                                elif clean_sec.lower() == 'communicationservices': clean_sec = 'Communication Services'
-                                val_str = f"{weight * 100:.2f}%" if weight <= 1.0 else f"{weight:.2f}%"
-                                top_sectors.append({"sector": clean_sec, "weight": val_str})
-                except Exception as e:
-                    logger.warning(f"Failed to parse Fund data: {e}")
+            info, is_fund, is_crypto, top_holdings, top_sectors = _fetch_company_fundamentals(safe_ticker)
 
             yield f"data: {json.dumps({'status': 'processing', 'step': 'Predicting future prices', 'progress': 40})}\n\n"
             

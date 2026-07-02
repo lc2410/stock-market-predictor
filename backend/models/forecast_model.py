@@ -280,6 +280,23 @@ def _fit_models(clf_base, reg_median, reg_lower, reg_upper, valid_all, predictor
     reg_upper.fit(valid_all[predictors], valid_all[col_reg])
     return clf
 
+def _init_models(lr, md, msl, iters):
+    """Helper to instantiate base classifier and quantile regressors."""
+    clf_base = HistGradientBoostingClassifier(
+        learning_rate=lr, max_depth=md, min_samples_leaf=msl, max_iter=iters,
+        class_weight="balanced", random_state=1
+    )
+    reg_median = HistGradientBoostingRegressor(
+        loss='quantile', quantile=0.5, learning_rate=lr, max_depth=md, min_samples_leaf=msl, max_iter=iters, random_state=1
+    )
+    reg_lower = HistGradientBoostingRegressor(
+        loss='quantile', quantile=0.1, learning_rate=lr, max_depth=md, min_samples_leaf=msl, max_iter=iters, random_state=1
+    )
+    reg_upper = HistGradientBoostingRegressor(
+        loss='quantile', quantile=0.9, learning_rate=lr, max_depth=md, min_samples_leaf=msl, max_iter=iters, random_state=1
+    )
+    return clf_base, reg_median, reg_lower, reg_upper
+
 def _train_multi_horizon_price(price_data, predictors, is_crypto, price_window):
     """
     Trains regressors and classifiers across multiple horizons to forecast future prices.
@@ -317,20 +334,7 @@ def _train_multi_horizon_price(price_data, predictors, is_crypto, price_window):
         msl = 20 if is_short_term else 10
         
         valid_all = price_data.iloc[:-1].dropna(subset=predictors + [col_reg, col_class])
-        clf_base = HistGradientBoostingClassifier(
-            learning_rate=lr, max_depth=md, min_samples_leaf=msl, max_iter=200,
-            class_weight="balanced", random_state=1
-        )
-        
-        reg_median = HistGradientBoostingRegressor(
-            loss='quantile', quantile=0.5, learning_rate=lr, max_depth=md, min_samples_leaf=msl, max_iter=200, random_state=1
-        )
-        reg_lower = HistGradientBoostingRegressor(
-            loss='quantile', quantile=0.1, learning_rate=lr, max_depth=md, min_samples_leaf=msl, max_iter=200, random_state=1
-        )
-        reg_upper = HistGradientBoostingRegressor(
-            loss='quantile', quantile=0.9, learning_rate=lr, max_depth=md, min_samples_leaf=msl, max_iter=200, random_state=1
-        )
+        clf_base, reg_median, reg_lower, reg_upper = _init_models(lr, md, msl, 200)
         
         if len(valid_all) > 15:
             clf = _fit_models(clf_base, reg_median, reg_lower, reg_upper, valid_all, predictors, col_class, col_reg)
@@ -396,20 +400,7 @@ def _train_multi_horizon_div(divs, div_predictors, div_window):
         divs[col_class] = (divs[col_reg] > 0).astype(int)
         
         valid_all = divs.iloc[:-1].dropna(subset=div_predictors + [col_reg, col_class])
-        clf_base = HistGradientBoostingClassifier(
-            learning_rate=0.05, max_depth=6, min_samples_leaf=3, max_iter=150,
-            class_weight="balanced", random_state=1
-        )
-        
-        reg_median = HistGradientBoostingRegressor(
-            loss='quantile', quantile=0.5, learning_rate=0.05, max_depth=6, min_samples_leaf=3, max_iter=150, random_state=1
-        )
-        reg_lower = HistGradientBoostingRegressor(
-            loss='quantile', quantile=0.1, learning_rate=0.05, max_depth=6, min_samples_leaf=3, max_iter=150, random_state=1
-        )
-        reg_upper = HistGradientBoostingRegressor(
-            loss='quantile', quantile=0.9, learning_rate=0.05, max_depth=6, min_samples_leaf=3, max_iter=150, random_state=1
-        )
+        clf_base, reg_median, reg_lower, reg_upper = _init_models(0.05, 6, 3, 150)
         
         if len(valid_all) >= 10:
             clf = _fit_models(clf_base, reg_median, reg_lower, reg_upper, valid_all, div_predictors, col_class, col_reg)
