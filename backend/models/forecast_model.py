@@ -53,14 +53,13 @@ def get_chart_data(price_data, div_data=None, is_crypto=False, show_all_prices=F
         "dividend_amounts": dividend_amounts
     }
 
-def _fetch_data(ticker, is_crypto=False):
+def _fetch_data(ticker, target_window, is_crypto=False):
     """
     Fetches historical stock data from Yahoo Finance.
     Adaptively fetches data incrementally (5 to 30 years) to balance API latency and data completeness.
     """
     stock_ticker = yf.Ticker(ticker)
     
-    target_window = 1825 if is_crypto else 1260
     buffer_days = 365 if is_crypto else 252
     min_required_days = target_window + buffer_days
     
@@ -119,7 +118,7 @@ def _fetch_data(ticker, is_crypto=False):
     else:
         div_data_slice = data.copy()
         
-    return price_data_slice, div_data_slice, target_window
+    return price_data_slice, div_data_slice
 
 def _engineer_price_features(data):
     """Computes technical indicators for the ML price model predictors."""
@@ -264,6 +263,23 @@ def extract_quantiles_metrics(clf, reg_median, reg_lower, reg_upper, test_row, p
         "Amount_Upper": round(amount_upper, 2)
     }
 
+def _fit_models(clf_base, reg_median, reg_lower, reg_upper, valid_all, predictors, col_class, col_reg):
+    """Helper to fit classifiers and quantile regressors."""
+    class_counts = valid_all[col_class].value_counts()
+    min_class_count = class_counts.min() if len(class_counts) > 1 else 0
+    
+    if min_class_count >= 2:
+        cv_folds = min(3, min_class_count)
+        clf = CalibratedClassifierCV(estimator=clf_base, method='isotonic', cv=cv_folds)
+    else:
+        clf = clf_base
+        
+    clf.fit(valid_all[predictors], valid_all[col_class])
+    reg_median.fit(valid_all[predictors], valid_all[col_reg])
+    reg_lower.fit(valid_all[predictors], valid_all[col_reg])
+    reg_upper.fit(valid_all[predictors], valid_all[col_reg])
+    return clf
+
 def _train_multi_horizon_price(price_data, predictors, is_crypto, price_window):
     """
     Trains regressors and classifiers across multiple horizons to forecast future prices.
@@ -317,19 +333,7 @@ def _train_multi_horizon_price(price_data, predictors, is_crypto, price_window):
         )
         
         if len(valid_all) > 15:
-            class_counts = valid_all[col_class].value_counts()
-            min_class_count = class_counts.min() if len(class_counts) > 1 else 0
-            
-            if min_class_count >= 2:
-                cv_folds = min(3, min_class_count)
-                clf = CalibratedClassifierCV(estimator=clf_base, method='isotonic', cv=cv_folds)
-            else:
-                clf = clf_base
-                
-            clf.fit(valid_all[predictors], valid_all[col_class])
-            reg_median.fit(valid_all[predictors], valid_all[col_reg])
-            reg_lower.fit(valid_all[predictors], valid_all[col_reg])
-            reg_upper.fit(valid_all[predictors], valid_all[col_reg])
+            clf = _fit_models(clf_base, reg_median, reg_lower, reg_upper, valid_all, predictors, col_class, col_reg)
             
             if h_days == 1:
                 test_preds = reg_median.predict(valid_all[predictors])
@@ -408,19 +412,7 @@ def _train_multi_horizon_div(divs, div_predictors, div_window):
         )
         
         if len(valid_all) >= 10:
-            class_counts = valid_all[col_class].value_counts()
-            min_class_count = class_counts.min() if len(class_counts) > 1 else 0
-            
-            if min_class_count >= 2:
-                cv_folds = min(3, min_class_count)
-                clf = CalibratedClassifierCV(estimator=clf_base, method='isotonic', cv=cv_folds)
-            else:
-                clf = clf_base
-                
-            clf.fit(valid_all[div_predictors], valid_all[col_class])
-            reg_median.fit(valid_all[div_predictors], valid_all[col_reg])
-            reg_lower.fit(valid_all[div_predictors], valid_all[col_reg])
-            reg_upper.fit(valid_all[div_predictors], valid_all[col_reg])
+            clf = _fit_models(clf_base, reg_median, reg_lower, reg_upper, valid_all, div_predictors, col_class, col_reg)
             
             if h_payouts == 1 and not valid_all.empty:
                 test_preds = reg_median.predict(valid_all[div_predictors])
@@ -503,7 +495,7 @@ def run_real_time_model(ticker, price_window=1260, div_window=25, is_crypto=Fals
     packages the final payload for the frontend API response.
     """
     # Retrieve the historical stock data using period="max" and strictly isolate necessary slices
-    price_data_raw, div_data_raw, price_window = _fetch_data(ticker, is_crypto)
+    price_data_raw, div_data_raw = _fetch_data(ticker, price_window, is_crypto)
     if price_data_raw is None:
         return None
 
