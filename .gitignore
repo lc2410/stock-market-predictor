@@ -33,3 +33,7 @@ infra/terraform.tfvars
 reset-env.sh
 to-do.txt
 app.log
+
+# AI Components
+.agents
+finbert_weights/

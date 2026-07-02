@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Stock & Dividend Forecaster</title>
+    <link rel="icon" href="data:,">
     <link rel="stylesheet" href="{{ url_for('static', filename='styles/main.css') }}">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
@@ -14,7 +15,7 @@
         <div class="header-container">
             <div>
                 <h1>Stock & Dividend Forecaster</h1>
-                <p>Enter a U.S. stock ticker symbol to get the next-day forecast.</p>
+                <p>Generate comprehensive price forecasts, dividend projections, and/or market sentiment analysis for any public asset.</p>
             </div>
             <button id="themeToggle" class="theme-btn" title="Toggle Theme">
                 <span class="theme-icon">🌙</span>
@@ -29,15 +30,42 @@
             </div>
             <button id="predictBtn">Get Forecast</button>
         </div>
-        
-        <div id="loader" class="loader-container">
-            <div class="loader"></div>
-            <div class="loader-text">Fetching prediction data...</div>
+        <div id="loader" class="loader-container" style="display: none;">
+            <div class="progress-header">
+                <h3 id="progress-title">Preparing Results...</h3>
+                <span id="progress-percentage">0%</span>
+            </div>
+            <div class="progress-bar-bg">
+                <div id="progress-bar-fill" class="progress-bar-fill"></div>
+            </div>
+            <div class="progress-steps" id="progress-steps-container">
+            </div>
         </div>
         
         <div id="resultContainer"></div>
         <div id="errorContainer" class="error-message"></div>
     </div>
+    <div id="newsModal" class="modal-overlay" style="display: none;">
+        <div class="modal-content">
+            <span id="closeModalBtn" class="modal-close">&times;</span>
+            <h2 id="modalTitle" class="modal-title">Article Title</h2>
+            <div class="modal-meta">
+                <span>Read article on </span>
+                <strong id="modalPublisher">Publisher Name</strong>
+                <a id="modalExternalLink" href="#" target="_blank" title="Open external article" class="modal-export-link">
+                    <svg class="export-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                        <polyline points="15 3 21 3 21 9"></polyline>
+                        <line x1="10" y1="14" x2="21" y2="3"></line>
+                    </svg>
+                </a>
+            </div>
+            <div class="modal-body">
+                <p id="modalSummary">Article summary text goes here...</p>
+            </div>
+        </div>
+    </div>
+
     <script src="{{ url_for('static', filename='scripts/main.js') }}"></script>
 </body>
 </html>
