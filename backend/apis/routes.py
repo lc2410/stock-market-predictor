@@ -288,4 +288,9 @@ def predict_stream(ticker):
             logger.error(f"Streaming error for ticker {safe_ticker}: {e}", exc_info=True)
             yield f"data: {json.dumps({'status': 'error', 'error': 'An internal server error occurred.'})}\n\n"
 
-    return Response(stream_with_context(generate()), mimetype='text/event-stream')
+    headers = {
+        'Cache-Control': 'no-cache',
+        'X-Accel-Buffering': 'no',
+        'Connection': 'keep-alive'
+    }
+    return Response(stream_with_context(generate()), mimetype='text/event-stream', headers=headers)
