@@ -1,4 +1,3 @@
-import pytest
 from backend.models.sentiment_analysis import analyze_news_sentiment, calculate_asset_grade
 from unittest.mock import patch, MagicMock
 
@@ -24,6 +23,42 @@ def test_analyze_news_sentiment_success(mock_analyzer, mock_ticker):
     assert "negative" in news_dict
     assert news_dict["positive"][0]["title"] == "Company profits soar"
     assert news_dict["negative"][0]["title"] == "Company faces massive lawsuit"
+
+@patch('backend.models.sentiment_analysis.yf.Ticker')
+def test_analyze_news_sentiment_bad_format(mock_ticker):
+    mock_instance = MagicMock()
+    mock_instance.news = [{"unreadable": "format"}]
+    mock_ticker.return_value = mock_instance
+    
+    score, details = analyze_news_sentiment("BAD")
+    assert score == 0.0
+    assert "unreadable" in details["neutral"]
+
+@patch('backend.models.sentiment_analysis.yf.Ticker')
+def test_analyze_news_sentiment_content_format(mock_ticker):
+    mock_instance = MagicMock()
+    mock_instance.news = [{
+        "content": {
+            "title": "Good news",
+            "summary": "Summary",
+            "provider": "Provider"
+        }
+    }]
+    mock_ticker.return_value = mock_instance
+    
+    # We mock sentiment_analyzer to not actually run the ML model
+    with patch('backend.models.sentiment_analysis.sentiment_analyzer') as mock_analyzer:
+        mock_analyzer.return_value = [{'label': 'positive', 'score': 0.9}]
+        score, details = analyze_news_sentiment("GOOD")
+        assert score == 0.9
+
+@patch('backend.models.sentiment_analysis.yf.Ticker')
+def test_analyze_news_sentiment_exception(mock_ticker):
+    # Trigger the try/except block in analyze_news_sentiment
+    mock_ticker.side_effect = Exception("Simulated API failure")
+    score, details = analyze_news_sentiment("ERR")
+    assert score == 0.0
+    assert "No recent news" in details["neutral"]
 
 @patch('backend.models.sentiment_analysis.yf.Ticker')
 def test_analyze_news_sentiment_no_news(mock_ticker):
