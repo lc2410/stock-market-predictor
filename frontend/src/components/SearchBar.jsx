@@ -27,7 +27,8 @@ export default function SearchBar({ onSearch, isLoading }) {
   const fetchSuggestions = useCallback(async (value) => {
     const currentId = ++latestSearchIdRef.current;
     try {
-      const res = await fetch(`/search/${value}`);
+      const safeValue = encodeURIComponent(value);
+      const res = await fetch(`/search/${safeValue}`);
       const data = await res.json();
       if (currentId !== latestSearchIdRef.current) return; // Stale response
       setSuggestions(data.length > 0 ? data : [{ symbol: null, name: 'No results found' }]);
