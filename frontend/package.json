@@ -1,12 +1,31 @@
 {
   "name": "stock-forecaster-frontend",
-  "version": "1.0.0",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
   "scripts": {
-    "lint:js": "eslint scripts/main.js",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "eslint src/",
     "test:frontend": "playwright test"
   },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "chart.js": "^4.4.3",
+    "chartjs-adapter-date-fns": "^3.0.0",
+    "chartjs-plugin-annotation": "^3.0.1",
+    "date-fns": "^3.6.0"
+  },
   "devDependencies": {
-    "@playwright/test": "^1.44.0",
-    "eslint": "^8.57.0"
+    "@vitejs/plugin-react": "^4.3.1",
+    "vite": "^5.3.4",
+    "eslint": "^9.7.0",
+    "@eslint/js": "^9.7.0",
+    "eslint-plugin-react": "^7.35.0",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "globals": "^15.8.0",
+    "@playwright/test": "^1.44.0"
   }
 }

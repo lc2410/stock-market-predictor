@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from backend.models.utils.forecasting_model_utils import get_us_bday, extract_quantiles_metrics, init_models, fit_models
+from models.utils.forecasting_model_utils import get_us_bday, extract_quantiles_metrics, init_models, fit_models
 
 def _engineer_price_features(data):
     """Computes technical indicators for the ML price model predictors."""

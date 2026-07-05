@@ -1,5 +1,5 @@
 import pandas as pd
-from backend.models.dividend_forecasting import (
+from models.dividend_forecasting import (
     _engineer_div_features,
     _train_multi_horizon_div,
     run_dividend_prediction

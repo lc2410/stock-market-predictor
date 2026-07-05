@@ -4,7 +4,7 @@ import pandas as pd
 import requests
 import numpy as np
 import json
-from backend.apis.routes import sanitize_for_json
+from apis.routes import sanitize_for_json
 from unittest.mock import patch, MagicMock, PropertyMock
 from app import app
 
@@ -15,15 +15,8 @@ def client():
     with app.test_client() as client:
         yield client
 
-# UI Endpoint Tests
-def test_home_page(client):
-    """Verifies the UI is served correctly."""
-    response = client.get('/')
-    assert response.status_code == 200
-    assert b"Stock & Dividend Forecaster" in response.data
-
 # Search Endpoint Tests
-@patch('backend.apis.routes.requests.get')
+@patch('apis.routes.requests.get')
 def test_search_endpoint_success(mock_get, client):
     mock_response = MagicMock()
     mock_response.json.return_value = {
@@ -41,7 +34,7 @@ def test_search_endpoint_success(mock_get, client):
     assert len(data) == 3
     assert data[0]["symbol"] == "AAPL"
 
-@patch('backend.apis.routes.requests.get')
+@patch('apis.routes.requests.get')
 def test_search_endpoint_empty_results(mock_get, client):
     mock_response = MagicMock()
     mock_response.json.return_value = {"other_key": "value"}
@@ -51,7 +44,7 @@ def test_search_endpoint_empty_results(mock_get, client):
     assert response.status_code == 200
     assert response.get_json() == []
 
-@patch('backend.apis.routes.requests.get')
+@patch('apis.routes.requests.get')
 def test_search_endpoint_exception(mock_get, client):
     mock_get.side_effect = requests.exceptions.RequestException("Network timeout")
     response = client.get('/search/ERROR')
@@ -62,11 +55,11 @@ def test_search_endpoint_exception(mock_get, client):
 import functools
 
 def patch_predictions(func):
-    @patch('backend.apis.routes.fetch_data')
-    @patch('backend.apis.routes.run_price_prediction')
-    @patch('backend.apis.routes.run_dividend_prediction')
-    @patch('backend.apis.routes.generate_future_chart_data')
-    @patch('backend.apis.routes.get_chart_data')
+    @patch('apis.routes.fetch_data')
+    @patch('apis.routes.run_price_prediction')
+    @patch('apis.routes.run_dividend_prediction')
+    @patch('apis.routes.generate_future_chart_data')
+    @patch('apis.routes.get_chart_data')
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         return func(*args, **kwargs)
@@ -105,14 +98,14 @@ def setup_mocks(mock_fetch, mock_price, mock_div, mock_generate_chart, mock_get_
 
 # Predict Endpoint Tests
 @patch_predictions
-@patch('backend.apis.routes.yf.Ticker')
+@patch('apis.routes.yf.Ticker')
 def test_predict_endpoint_success(mock_ticker, mock_get_chart, mock_generate_chart, mock_div, mock_price, mock_fetch, client):
     setup_mocks(mock_fetch, mock_price, mock_div, mock_generate_chart, mock_get_chart)
     mock_instance = MagicMock()
     mock_instance.info = {"longName": "Apple Inc.", "quoteType": "EQUITY", "recommendationKey": "buy"}
     mock_ticker.return_value = mock_instance
     
-    with patch('backend.apis.routes.analyze_news_sentiment') as mock_sentiment:
+    with patch('apis.routes.analyze_news_sentiment') as mock_sentiment:
         mock_sentiment.return_value = (0.5, {"positive": ["Good"]})
         
         response = client.get('/predict/AAPL')
@@ -122,7 +115,7 @@ def test_predict_endpoint_success(mock_ticker, mock_get_chart, mock_generate_cha
         assert json_data['Chart_History']['prices'][0] == approx(148.0)
 
 @patch_predictions
-@patch('backend.apis.routes.yf.Ticker')
+@patch('apis.routes.yf.Ticker')
 def test_predict_endpoint_etf_success(mock_ticker, mock_get_chart, mock_generate_chart, mock_div, mock_price, mock_fetch, client):
     setup_mocks(mock_fetch, mock_price, mock_div, mock_generate_chart, mock_get_chart, is_etf=True)
     mock_instance = MagicMock()
@@ -134,7 +127,7 @@ def test_predict_endpoint_etf_success(mock_ticker, mock_get_chart, mock_generate
     mock_instance.funds_data = mock_funds_data
     mock_ticker.return_value = mock_instance
     
-    with patch('backend.apis.routes.analyze_news_sentiment') as mock_sentiment:
+    with patch('apis.routes.analyze_news_sentiment') as mock_sentiment:
         mock_sentiment.return_value = (0.5, {"positive": ["Good"]})
         response = client.get('/predict/VOO')
         assert response.status_code == 200
@@ -143,21 +136,21 @@ def test_predict_endpoint_etf_success(mock_ticker, mock_get_chart, mock_generate
         assert json_data['Div_Forecasts']['Next_Payout']['Direction'] == "Up"
 
 @patch_predictions
-@patch('backend.apis.routes.yf.Ticker')
+@patch('apis.routes.yf.Ticker')
 def test_predict_endpoint_info_exception(mock_ticker, mock_get_chart, mock_generate_chart, mock_div, mock_price, mock_fetch, client):
     setup_mocks(mock_fetch, mock_price, mock_div, mock_generate_chart, mock_get_chart)
     mock_instance = MagicMock()
     type(mock_instance).info = PropertyMock(side_effect=Exception("API limit reached"))
     mock_ticker.return_value = mock_instance
     
-    with patch('backend.apis.routes.analyze_news_sentiment') as mock_sentiment:
+    with patch('apis.routes.analyze_news_sentiment') as mock_sentiment:
         mock_sentiment.return_value = (0.0, {"neutral": "No news"})
         response = client.get('/predict/AAPL')
         assert response.status_code == 200
         assert response.get_json()['Ticker'] == 'AAPL'
 
 @patch_predictions
-@patch('backend.apis.routes.yf.Ticker')
+@patch('apis.routes.yf.Ticker')
 def test_predict_endpoint_etf_parsing_exception(mock_ticker, mock_get_chart, mock_generate_chart, mock_div, mock_price, mock_fetch, client):
     setup_mocks(mock_fetch, mock_price, mock_div, mock_generate_chart, mock_get_chart)
     mock_instance = MagicMock()
@@ -165,7 +158,7 @@ def test_predict_endpoint_etf_parsing_exception(mock_ticker, mock_get_chart, moc
     type(mock_instance).funds_data = PropertyMock(side_effect=Exception("Corrupt fund data"))
     mock_ticker.return_value = mock_instance
     
-    with patch('backend.apis.routes.analyze_news_sentiment') as mock_sentiment:
+    with patch('apis.routes.analyze_news_sentiment') as mock_sentiment:
         mock_sentiment.return_value = (0.0, {"neutral": "No news"})
         response = client.get('/predict/FXAIX')
         assert response.status_code == 200
@@ -207,7 +200,7 @@ def test_sanitize_pandas_types():
 def test_sanitize_single_nat():
     assert sanitize_for_json(pd.NaT) is None
 
-from backend.apis.routes import build_frontend_payload
+from apis.routes import build_frontend_payload
 def test_build_frontend_payload_info_exception():
     raw_ml_data = {
         "anchor_date": pd.Timestamp("2026-06-12"),
@@ -259,14 +252,14 @@ def test_build_frontend_payload_crypto():
 
 # Stream Endpoint Tests
 @patch_predictions
-@patch('backend.apis.routes.yf.Ticker')
+@patch('apis.routes.yf.Ticker')
 def test_predict_stream_endpoint_success(mock_ticker, mock_get_chart, mock_generate_chart, mock_div, mock_price, mock_fetch, client):
     setup_mocks(mock_fetch, mock_price, mock_div, mock_generate_chart, mock_get_chart)
     mock_instance = MagicMock()
     mock_instance.info = {"longName": "Apple Inc.", "quoteType": "EQUITY", "recommendationKey": "buy"}
     mock_ticker.return_value = mock_instance
     
-    with patch('backend.apis.routes.analyze_news_sentiment') as mock_sentiment:
+    with patch('apis.routes.analyze_news_sentiment') as mock_sentiment:
         mock_sentiment.return_value = (0.5, {"positive": ["Good"]})
         
         response = client.get('/predict_stream/AAPL')
@@ -304,7 +297,7 @@ def test_predict_stream_endpoint_internal_error(mock_get_chart, mock_generate_ch
     assert "internal server error" in final_event['error']
 
 @patch_predictions
-@patch('backend.apis.routes.yf.Ticker')
+@patch('apis.routes.yf.Ticker')
 def test_predict_stream_endpoint_info_exception(mock_ticker, mock_get_chart, mock_generate_chart, mock_div, mock_price, mock_fetch, client):
     setup_mocks(mock_fetch, mock_price, mock_div, mock_generate_chart, mock_get_chart)
     mock_fetch.side_effect = Exception("Crash")
@@ -319,7 +312,7 @@ def test_predict_stream_endpoint_info_exception(mock_ticker, mock_get_chart, moc
     assert events[-1]['status'] == 'error'
 
 def test_predict_stream_cache(client):
-    from backend.apis.routes import forecast_cache
+    from apis.routes import forecast_cache
     forecast_cache['CACHED'] = {"Ticker": "CACHED", "fake": "data"}
     
     response = client.get('/predict_stream/CACHED')

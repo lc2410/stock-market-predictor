@@ -1,3 +1,10 @@
+"""
+forecasting_model_utils.py
+--------------------------
+Shared mathematical utilities and helper functions for the machine learning pipelines.
+This module handles dynamic data fetching from Yahoo Finance, date math for market closures
+(weekends/holidays), and structing the historical/projected datasets for Chart.js.
+"""
 import yfinance as yf
 import pandas as pd
 import numpy as np
