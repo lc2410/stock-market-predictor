@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 from unittest.mock import MagicMock, patch
-from backend.models.utils.forecasting_model_utils import (
+from models.utils.forecasting_model_utils import (
     fetch_data,
     get_chart_data,
     extract_quantiles_metrics
@@ -61,7 +61,7 @@ def test_get_chart_data_edge_cases():
     df["Dividends"] = 0.0
     assert get_chart_data(df)["dividend_dates"] == []
 
-@patch("backend.models.utils.forecasting_model_utils.yf.Ticker")
+@patch("models.utils.forecasting_model_utils.yf.Ticker")
 def test_fetch_data_empty(mock_ticker):
     mock_instance = MagicMock()
     mock_instance.history.return_value = pd.DataFrame()
@@ -71,7 +71,7 @@ def test_fetch_data_empty(mock_ticker):
     assert price is None
     assert div is None
 
-@patch("backend.models.utils.forecasting_model_utils.yf.Ticker")
+@patch("models.utils.forecasting_model_utils.yf.Ticker")
 def test_fetch_data_insufficient(mock_ticker):
     mock_instance = MagicMock()
     # Return a tiny dataset that triggers the "break early" logic
@@ -83,7 +83,7 @@ def test_fetch_data_insufficient(mock_ticker):
     assert price is not None
     assert len(price) == 2
 
-@patch("backend.models.utils.forecasting_model_utils.yf.Ticker")
+@patch("models.utils.forecasting_model_utils.yf.Ticker")
 def test_fetch_data_one_row(mock_ticker):
     mock_instance = MagicMock()
     mock_instance.history.return_value = pd.DataFrame({"Close": [100.0], "Dividends": [0.0]}, index=pd.date_range("2020-01-01", periods=1))
@@ -93,7 +93,7 @@ def test_fetch_data_one_row(mock_ticker):
     # Will hit len(data) < 2
     assert price is None
 
-@patch("backend.models.utils.forecasting_model_utils.yf.Ticker")
+@patch("models.utils.forecasting_model_utils.yf.Ticker")
 def test_fetch_data_full_loop_and_dividends_slice(mock_ticker):
     mock_instance = MagicMock()
     
@@ -116,7 +116,7 @@ def test_fetch_data_full_loop_and_dividends_slice(mock_ticker):
     # Verifies dividends were sliced down from 2500
     assert len(div) < 2500
 
-from backend.models.utils.forecasting_model_utils import generate_future_chart_data
+from models.utils.forecasting_model_utils import generate_future_chart_data
 
 def test_generate_future_chart_data_empty():
     d, p, u, l = generate_future_chart_data({1: 100.0}, {1: 90.0}, {1: 110.0}, pd.Timestamp("2023-01-01"), is_crypto=False)

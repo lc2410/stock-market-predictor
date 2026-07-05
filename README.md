@@ -1,4 +1,4 @@
-# Real-Time Stock & Dividend Forecaster
+# MarketLens
 
 ## Overview
 Stock trading is a complex process for both short and long-term investors, particularly in highly volatile market conditions. This application is meant to help those who are afraid of getting into the market blindly by delivering real-time market data and predictive insights into publicly traded assets like ETFs, index funds, and/or individual stocks. By combining automated data ingestion, advanced machine learning techniques, and AI sentiment analysis into an intuitive interface, the platform empowers users to confidently evaluate assets and make data-driven investment decisions.
@@ -10,8 +10,8 @@ To ensure enterprise-grade stability, security, and performance, this applicatio
 
 ![Image of Application Architecture](imgs/stock-market-predictor-arch.png)
 
-1. **Client (Front-End):** The user browser loads the HTML, CSS, and JavaScript. The UI is decoupled from the heavy ML processing. It utilizes the native `EventSource` API to maintain an open Server-Sent Events (SSE) connection, ensuring the interface remains highly responsive by streaming a live execution checklist and progress trackers while the models train in the background.
-2. **Web Server (Nginx Reverse Proxy):** Nginx acts as the secure front door to the application. It intercepts incoming public HTTP traffic on port 80 and buffers requests to protect the internal server from slow clients or malicious spikes. It safely proxies validated dynamic requests to the internal application layer.
+1. **Client (Front-End React SPA):** The user interface is a modern Single Page Application (SPA) built with React and Vite. The UI is completely decoupled from the heavy ML processing. It utilizes the native `EventSource` API to maintain an open Server-Sent Events (SSE) connection, streaming a live execution checklist and progress trackers while the models train in the background.
+2. **Web Server (Nginx Reverse Proxy):** Nginx acts as the secure front door to the application, efficiently serving the static React build files. It intercepts incoming public HTTP traffic on port 80 and safely proxies validated dynamic API and SSE requests to the internal application layer.
 3. **Application Server (Gunicorn WSGI):** Web servers and Python applications speak different protocols. Gunicorn acts as the essential Web Server Gateway Interface (WSGI) translator. It runs as a highly available background `systemd` service on internal port 8000 and manages a pool of worker processes that execute the Flask code in parallel.
 4. **API & ML Execution:** The Flask routing layer handles API requests. It proxies Yahoo Finance autocomplete queries to bypass CORS restrictions. It also catches prediction requests to trigger the algorithmic pipeline. This fetches real-time data, dynamically trains the machine learning models, and actively streams the execution progress and final multi-horizon forecast back to the client as structured JSON via SSE.
 5. **CI/CD Pipeline:** An automated workflow that triggers on code changes to enforce strict quality control. Before any code reaches the production server, the pipeline executes security vulnerability scans, code linting, automated test suites, and static code analysis, ensuring only stable, validated code is deployed to the Oracle Cloud virtual machine.
@@ -32,14 +32,18 @@ stock-market-predictor/
 │   │   ├── assets/           # ML model assets and weights
 │   │   ├── scripts/          # Model download scripts
 │   │   └── utils/            # Helper utilities and shared logic
-│   └── tests/                # Pytest unit and integration test suite (mirrors backend structure)
+│   ├── tests/                # Pytest unit and integration test suite
+│   └── app.py                # Flask application bootloader
 ├── frontend/
-│   ├── scripts/              # Vanilla JS, DOM manipulation, and Chart.js logic
-│   ├── styles/               # UI styling and layout
-│   ├── tests/                # Playwright End-to-End (E2E) browser tests
-│   └── index.html            # Main web interface
-├── infra/                    # Terraform Infrastructure as Code (IaC) scripts
-├── app.py                    # Flask application bootloader
+│   ├── public/               # Static assets (logos, icons)
+│   ├── src/                  # React source code
+│   │   ├── components/       # Reusable React components (cards, tabs, ui)
+│   │   ├── hooks/            # Custom React hooks (e.g., useTheme)
+│   │   ├── App.jsx           # Main React Application router
+│   │   ├── index.css         # Global CSS variables and responsive styling
+│   │   └── main.jsx          # React DOM rendering entry point
+│   └── tests/                # Playwright End-to-End (E2E) browser tests
+├── infra/                    # Terraform Infrastructure as Code & Nginx config
 └── sonar-project.properties  # SonarCloud static analysis configuration
 ```
 
@@ -53,6 +57,7 @@ stock-market-predictor/
 * **Closed Price Forecasting Summary:** Delivers a clear breakdown of the next trading day's predicted price direction, magnitude, and statistical confidence. This is paired with an interactive Chart.js engine featuring a draggable time-navigator, allowing users to seamlessly pan and zoom across historical market data and view future trajectories bounded by a 95% confidence interval margin of error from as far as 1-year from now. A unified, scrollable data table provides a clean view of trailing-year historical prices alongside the future projections.
 * **Dividend Payout Forecasting Summary:** Automatically determines if an asset pays dividends and projects the exact date, direction, and amount of the next payout. It features an interactive bar chart visualizing historical payouts against the projected next five payout cycles in total, complete with explicit 95% margin of error bounds. A dedicated data table organizes these historical and forecasted ex-dividend dates and amounts.
 * **Light/Dark Modes:** A native, fully integrated theme manager that allows users to toggle between a clean light mode and a deep dark mode, dynamically updating the CSS variables, UI components, and Chart.js canvases on the fly without requiring a page reload.
+* **Mobile-First Responsiveness:** The user interface features a fluid, highly responsive CSS architecture tailored to look and perform natively on any screen size. Grids and horizontal cards natively collapse and re-flow into clean vertical stacks on mobile, while tabs leverage native horizontal touch scrolling, maximizing the viewport space for dense financial charts and data tables on small screens.
 
 ---
 
@@ -121,18 +126,26 @@ The backend utilizes the HuggingFace `transformers` library to load the highly s
     git clone [https://github.com/lc2410/stock-market-predictor.git](https://github.com/lc2410/stock-market-predictor.git)
     cd stock-market-predictor
     ```
-2.  **Environment Setup (Python 3.12):**
+2.  **Environment Setup (Python 3.12 + Node v22.22.3):**
     ```bash
     python3 -m venv venv
     source venv/bin/activate
     cd backend
     pip install -r requirements.txt
+    cd ../frontend
+    npm i
+    cd ..
     ```
-3.  **Run the Local Server:**
+3.  **Run the Backend Server:**
     ```bash
-    python3 app.py
+    cd backend
+    python3 backend/app.py
     ```
-    Navigate to `http://127.0.0.1:5001` in your browser.
+4. **Run the Frontend Application**
+   ```bash
+    cd frontend
+    npm run dev
+    ```
 
 ---
 
@@ -184,19 +197,12 @@ python3 -m pytest backend/tests/ --cov=. --cov-report=term --cov-report=html
 ```
 
 ### 2. Frontend E2E Testing (Playwright)
-Automated headless browsers simulate real human interaction. Playwright tests the full UI lifecycle, including typing into the search bar, validating loading spinners, and verifying that the API successfully returns and renders the chart data.
+Automated headless browsers simulate real human interaction. Playwright tests the full UI lifecycle, including typing into the search bar, validating autocomplete suggestions, and verifying theme toggling. All API calls are mocked within the test suite, so the Flask backend does not need to be running.
 
 **Local Execution:**
 ```bash
-# Running the python application first
-python3 app.py
-
-# Navigate to the frontend directory and install dependencies
 cd frontend
-npm install
-npx playwright install 
-
-# Execute the End-to-End test suite
+npx playwright install   # (first time only)
 npm run test:frontend
 ```
 
@@ -229,8 +235,8 @@ You can access the live production environment hosted on Oracle Cloud here: [htt
 * **Cloud & Infrastructure:** Oracle Cloud (OCI), Terraform, Linux (Ubuntu)
 * **CI/CD & DevOps:** GitHub Actions, SonarCloud (Static Analysis)
 * **Web Serving:** Nginx (Reverse Proxy), Gunicorn (WSGI)
-* **Back-End:** Python, Flask, Server-Sent Events (SSE)
-* **Machine Learning:** Scikit-learn, Pandas, NumPy, HuggingFace Transformers (FinBERT)
+* **Back-End:** Python 3.12, Flask, Server-Sent Events (SSE)
+* **Machine Learning:** Scikit-Learn, Pandas, NumPy, HuggingFace Transformers
 * **Data Sourcing:** yfinance (Yahoo Finance API)
-* **Front-End:** HTML5, CSS3, Vanilla JavaScript, Chart.js
-* **Testing:** Pytest (Unit/Integration), Playwright (E2E UI Testing)
+* **Front-End:** React 18, Vite, Vanilla CSS, Chart.js
+* **Testing:** Pytest (Unit/Integration), Playwright (E2E UI Testing), ESLint

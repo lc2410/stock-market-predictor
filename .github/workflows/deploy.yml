@@ -28,7 +28,7 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: frontend/package.json
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Check for Python Vulnerabilities
         run: |
@@ -56,18 +56,18 @@ jobs:
       - name: Install Flake8
         run: pip install flake8
       - name: Run Python Linter
-        run: flake8 backend/ app.py --count --select=E9,F63,F7,F82 --show-source --statistics
+        run: flake8 backend/ --count --select=E9,F63,F7,F82 --show-source --statistics
       
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: frontend/package.json
+          cache-dependency-path: frontend/package-lock.json
       - name: Install NPM Dependencies
-        run: cd frontend && npm install
-      - name: Run JS Linter
-        run: cd frontend && npm run lint:js
+        run: cd frontend && npm ci
+      - name: Run JS/JSX Linter
+        run: cd frontend && npm run lint
 
   test-backend:
     name: Backend Tests & Coverage
@@ -102,43 +102,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
-          cache: 'pip'
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: frontend/package.json
+          cache-dependency-path: frontend/package-lock.json
       
-      - name: Install Python Dependencies
-        run: pip install -r backend/requirements.txt
       - name: Install NPM Dependencies & Browsers
         run: |
           cd frontend
-          npm install
+          npm ci
           sudo rm -f /etc/apt/sources.list.d/azure-cli.list
           sudo rm -f /etc/apt/sources.list.d/microsoft-prod.list
           sudo apt-get update
           npx playwright install --with-deps
-          
-      - name: Boot Flask Backend
-        run: |
-          export PYTHONPATH=.
-          nohup python app.py > app.log 2>&1 &
-          for i in {1..30}; do
-            curl -s http://127.0.0.1:5001 > /dev/null && echo "Server is up!" && break
-            echo "Waiting for server to boot... ($i/30)"
-            sleep 2
-          done
-          
+
       - name: Run Playwright Tests
-        run: |
-          cd frontend
-          npm run test:frontend
+        run: cd frontend && npm run test:frontend
         
       - name: Upload Playwright Report
         if: always() 
@@ -175,6 +156,8 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
       - name: Execute Remote SSH Commands
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -187,9 +170,32 @@ jobs:
             sudo chown -R $(whoami):$(whoami) /home/ubuntu/stock-market-predictor
             git config --global --add safe.directory /home/ubuntu/stock-market-predictor
             git pull origin main
+
+            # Install/update Python dependencies
             source venv/bin/activate
             pip install -r backend/requirements.txt
             python backend/models/scripts/download_pretrained_model.py
-            sudo systemctl restart forecaster  
+
+            # Install Node.js if not present
+            if ! command -v node &> /dev/null; then
+              curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+              sudo apt-get install -y nodejs
+            fi
+
+            # Build the React frontend
+            cd frontend
+            npm ci --prefer-offline
+            npm run build
+            cd ..
+
+            # Deploy Nginx config (idempotent)
+            sudo cp infra/forecaster.nginx.conf /etc/nginx/sites-available/forecaster
+            sudo ln -sf /etc/nginx/sites-available/forecaster /etc/nginx/sites-enabled/forecaster
+            sudo nginx -t && sudo systemctl reload nginx
+
+            # Restart Flask/Gunicorn API server
+            sudo systemctl restart forecaster
             sleep 10
+
+            # Health check — Nginx should serve the React app at /
             curl --fail http://localhost/ || (git reset --hard HEAD~1 && sudo systemctl restart forecaster && exit 1)

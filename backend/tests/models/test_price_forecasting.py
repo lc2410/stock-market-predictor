@@ -1,5 +1,5 @@
 import pandas as pd
-from backend.models.price_forecasting import (
+from models.price_forecasting import (
     _engineer_price_features, 
     _train_multi_horizon_price,
     run_price_prediction

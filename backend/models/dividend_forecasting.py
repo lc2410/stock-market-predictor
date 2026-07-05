@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from backend.models.utils.forecasting_model_utils import extract_quantiles_metrics, init_models, fit_models
+from models.utils.forecasting_model_utils import extract_quantiles_metrics, init_models, fit_models
 
 def _engineer_div_features(data, anchor_date, div_window=25):
     """

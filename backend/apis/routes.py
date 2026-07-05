@@ -1,14 +1,22 @@
-from flask import Blueprint, jsonify, render_template, Response, stream_with_context
+"""
+routes.py
+---------
+Defines all Flask API endpoints and Server-Sent Events (SSE) data streams.
+This file handles HTTP requests from the React frontend, coordinates the parallel
+execution of the machine learning pipelines (price, dividend, and sentiment),
+and structures the final JSON payload for the user interface.
+"""
+from flask import Blueprint, jsonify, Response, stream_with_context
 import requests
 import json
 import logging
 import pandas as pd
 import yfinance as yf
 from cachetools import cached, TTLCache
-from backend.models.utils.forecasting_model_utils import get_us_bday, fetch_data, get_chart_data, generate_future_chart_data
-from backend.models.price_forecasting import run_price_prediction
-from backend.models.dividend_forecasting import run_dividend_prediction
-from backend.models.sentiment_analysis import analyze_news_sentiment, calculate_asset_grade
+from models.utils.forecasting_model_utils import get_us_bday, fetch_data, get_chart_data, generate_future_chart_data
+from models.price_forecasting import run_price_prediction
+from models.dividend_forecasting import run_dividend_prediction
+from models.sentiment_analysis import analyze_news_sentiment, calculate_asset_grade
 
 api_bp = Blueprint('api', __name__)
 logger = logging.getLogger(__name__)
@@ -122,9 +130,6 @@ def _fetch_company_fundamentals(safe_ticker):
             
     return info, is_fund, is_crypto, top_holdings, top_sectors
 
-@api_bp.route('/')
-def home():
-    return render_template('index.html')
 
 @api_bp.route('/search/<string:query>', methods=['GET'])
 def search(query):
