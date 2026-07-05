@@ -69,6 +69,12 @@ export default function App() {
       return;
     }
 
+    // Strict validation to prevent SSRF / Path Traversal / Injection
+    if (!/^[A-Z0-9.-]+$/.test(upperTicker)) {
+      setError('Invalid ticker format. Only alphanumeric characters, dots, and hyphens are allowed.');
+      return;
+    }
+
     // Reset state for new fetch
     setError('');
     setResult(null);
@@ -81,7 +87,8 @@ export default function App() {
     activeStepIdRef.current = null;
 
     try {
-      const eventSource = new EventSource(`/predict_stream/${upperTicker}`);
+      const safeTicker = encodeURIComponent(upperTicker);
+      const eventSource = new EventSource(`/predict_stream/${safeTicker}`);
 
       eventSource.onmessage = (e) => {
         const data = JSON.parse(e.data);

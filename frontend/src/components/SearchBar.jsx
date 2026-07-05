@@ -111,12 +111,17 @@ export default function SearchBar({ onSearch, isLoading }) {
           <div id="autocompleteResults" className="autocomplete-items">
             {suggestions.map((item, idx) =>
               item.symbol ? (
-                <div
-                  key={item.symbol + idx}
-                  className="autocomplete-item"
-                  data-symbol={item.symbol}
-                  onClick={() => handleSelect(item.symbol)}
-                >
+                  <div
+                    key={item.symbol + idx}
+                    className="autocomplete-item"
+                    data-symbol={item.symbol}
+                    onClick={() => handleSelect(item.symbol)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') handleSelect(item.symbol);
+                    }}
+                    role="button"
+                    tabIndex={0}
+                  >
                   <span className="ac-sym">{item.symbol}</span>
                   <span className="ac-name">{item.name || ''}</span>
                 </div>

@@ -32,6 +32,11 @@ export default function NewsModal({ article, onClose }) {
       id="newsModal"
       className="modal-overlay"
       onClick={handleOverlayClick}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') handleOverlayClick(e);
+      }}
+      role="button"
+      tabIndex={0}
     >
       <div className="modal-content">
         <button id="closeModalBtn" className="modal-close" onClick={onClose}>
