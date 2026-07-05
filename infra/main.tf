@@ -135,9 +135,9 @@ resource "oci_core_instance" "app_server" {
       [Service]
       User=root
       Group=www-data
-      WorkingDirectory=/home/ubuntu/stock-market-predictor
+      WorkingDirectory=/home/ubuntu/stock-market-predictor/backend
       Environment="PATH=/home/ubuntu/stock-market-predictor/venv/bin"
-      ExecStart=/home/ubuntu/stock-market-predictor/venv/bin/gunicorn -w 4 -b 0.0.0.0:80 --timeout 120 app:app
+      ExecStart=/home/ubuntu/stock-market-predictor/venv/bin/gunicorn -w 4 --worker-class gthread --threads 10 -b 127.0.0.1:5001 --timeout 120 app:app
 
       [Install]
       WantedBy=multi-user.target
