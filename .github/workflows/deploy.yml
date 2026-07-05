@@ -188,6 +188,13 @@ jobs:
             npm run build
             cd ..
 
+            # Ensure Nginx (www-data) has execute permissions to traverse the home directory
+            # and read permissions to serve the static React assets.
+            sudo chmod 711 /home/ubuntu
+            sudo chmod 755 /home/ubuntu/stock-market-predictor
+            sudo chmod 755 /home/ubuntu/stock-market-predictor/frontend
+            sudo chmod -R 755 /home/ubuntu/stock-market-predictor/frontend/dist
+
             # Deploy Nginx config (idempotent)
             sudo cp infra/forecaster.nginx.conf /etc/nginx/sites-available/forecaster
             sudo ln -sf /etc/nginx/sites-available/forecaster /etc/nginx/sites-enabled/forecaster
