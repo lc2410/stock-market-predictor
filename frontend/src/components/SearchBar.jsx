@@ -25,6 +25,12 @@ export default function SearchBar({ onSearch, isLoading }) {
   }, []);
 
   const fetchSuggestions = useCallback(async (value) => {
+    // Validate input
+    if (!/^[a-zA-Z0-9.\-\s]+$/.test(value)) {
+      setSuggestions([]);
+      return;
+    }
+
     const currentId = ++latestSearchIdRef.current;
     try {
       const safeValue = encodeURIComponent(value);
