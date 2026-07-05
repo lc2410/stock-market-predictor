@@ -1,4 +1,6 @@
 import os
+import re
+import html
 import yfinance as yf
 from transformers import pipeline
 
@@ -9,16 +11,76 @@ if os.path.exists(model_dir):
 else:
     sentiment_analyzer = pipeline("sentiment-analysis", model="ProsusAI/finbert")
 
+def clean_text(text):
+    """Cleans HTML entities, tags, and excess whitespace from the text."""
+    if not text:
+        return ""
+    text = html.unescape(text)
+    text = re.sub(r'<[^>]+>', '', text)  # remove HTML tags
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
+
 def analyze_news_sentiment(ticker):
     """Scrapes Yahoo Finance news, scores them, and returns pure data arrays instead of HTML."""
     try:
         stock = yf.Ticker(ticker)
         news_items = stock.news 
         
+        info = stock.info
+        short_name = ""
+        quote_type = ""
+        if isinstance(info, dict):
+            if info.get('shortName'):
+                short_name = info.get('shortName').split()[0].upper()
+            quote_type = info.get('quoteType', '')
+            
+        # If it's a fund, mix in news from its top holdings for more specific context
+        if quote_type in ['ETF', 'MUTUALFUND']:
+            try:
+                if hasattr(stock, 'funds_data') and hasattr(stock.funds_data, 'top_holdings'):
+                    # Get top 2 holdings symbols
+                    top_holdings = stock.funds_data.top_holdings.index.tolist()[:2]
+                    for holding in top_holdings:
+                        holding_news = yf.Ticker(holding).news
+                        if holding_news:
+                            news_items.extend(holding_news[:3]) # Take top 3 recent news from each holding
+            except Exception:
+                pass
+        
         if not news_items:
             return 0.0, {"neutral": "No recent news articles available to analyze."}
 
-        news_items = news_items[:10]
+
+            
+        ticker_upper = ticker.upper()
+
+        relevant_news = []
+        for item in news_items:
+            if 'content' in item and isinstance(item['content'], dict):
+                title = item['content'].get('title', '').upper()
+                summary = item['content'].get('summary', '').upper()
+            else:
+                title = item.get('title', '').upper()
+                summary = item.get('summary', '').upper()
+            
+            # Check for explicit ticker tags in the title like (MSFT) or (NASDAQ:MSFT)
+            title_tags = re.findall(r'\(([A-Z]+:[A-Z]+|[A-Z]{1,5})\)', title)
+            title_tickers = [tag.split(':')[-1] for tag in title_tags]
+            
+            # ETFs, Mutual Funds, and Crypto have naturally generalized news feeds.
+            # Only apply strict name/ticker filtering for individual companies (EQUITY).
+            if quote_type != 'EQUITY':
+                relevant_news.append(item)
+            elif title_tickers and ticker_upper not in title_tickers:
+                # If the title explicitly tags other companies but not ours, drop it
+                continue
+            elif ticker_upper in title or ticker_upper in summary or (short_name and (short_name in title or short_name in summary)):
+                relevant_news.append(item)
+                
+        if not relevant_news:
+            return 0.0, {"neutral": f"No recent news articles specifically mentioning {ticker_upper} were found."}
+
+        news_items = relevant_news[:20]
 
         headlines = []
         links = []
@@ -52,15 +114,22 @@ def analyze_news_sentiment(ticker):
                     publisher = provider
 
             if title:
-                headlines.append(title)
+                headlines.append(clean_text(title))
                 links.append(link if link else "#")
-                summaries.append(summary)
+                summaries.append(clean_text(summary))
                 publishers.append(publisher)
         
         if not headlines:
             return 0.0, {"neutral": "Recent news format was unreadable."}
 
-        results = sentiment_analyzer(headlines)
+        # Combine headline and summary for analysis, truncate to prevent token limit errors
+        texts_to_analyze = [
+            f"{hl}. {sumry}"[:1000] if sumry else hl 
+            for hl, sumry in zip(headlines, summaries)
+        ]
+
+        # Use truncation=True to let the tokenizer handle any length issues safely
+        results = sentiment_analyzer(texts_to_analyze, truncation=True)
         score_total = 0
         scored_headlines = []
         
@@ -83,8 +152,8 @@ def analyze_news_sentiment(ticker):
             
         final_score = score_total / len(headlines)
 
-        bullish_drivers = sorted([x for x in scored_headlines if x['score'] > 0.4], key=lambda x: x['score'], reverse=True)[:2]
-        bearish_drivers = sorted([x for x in scored_headlines if x['score'] < -0.4], key=lambda x: x['score'])[:2]
+        bullish_drivers = sorted([x for x in scored_headlines if x['score'] > 0.4], key=lambda x: x['score'], reverse=True)[:5]
+        bearish_drivers = sorted([x for x in scored_headlines if x['score'] < -0.4], key=lambda x: x['score'])[:5]
         
         # Return a clean dictionary of strings
         news_data = {}

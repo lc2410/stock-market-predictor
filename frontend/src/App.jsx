@@ -28,10 +28,12 @@ export default function App() {
   const [result, setResult] = useState(null);
   const [isFadeIn, setIsFadeIn] = useState(false);
   const [modalArticle, setModalArticle] = useState(null);
+  const [resolvedTicker, setResolvedTicker] = useState(null);
 
   // SSE step timer
   const timerIntervalRef = useRef(null);
   const activeStepIdRef = useRef(null);
+  const eventSourceRef = useRef(null);
 
   const clearLoading = useCallback(() => {
     setIsLoading(false);
@@ -39,6 +41,15 @@ export default function App() {
     setIsLoaderFadingOut(false);
     clearInterval(timerIntervalRef.current);
   }, []);
+
+  const cancelPrediction = useCallback(() => {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+    clearLoading();
+    setError('');
+  }, [clearLoading]);
 
   const completeActiveStep = useCallback(() => {
     // Snapshot the ID synchronously so the functional setSteps update below
@@ -60,6 +71,7 @@ export default function App() {
       setError('');
       setProgress(0);
       setSteps([]);
+      setResolvedTicker(null);
       return;
     }
 
@@ -80,6 +92,7 @@ export default function App() {
     setResult(null);
     setProgress(0);
     setSteps([]);
+    setResolvedTicker(null);
     setIsLoading(true);
     setIsLoaderVisible(true);
     setIsLoaderFadingOut(false);
@@ -89,12 +102,14 @@ export default function App() {
     try {
       const safeTicker = encodeURIComponent(upperTicker);
       const eventSource = new EventSource(`/predict_stream/${safeTicker}`);
+      eventSourceRef.current = eventSource;
 
       eventSource.onmessage = (e) => {
         const data = JSON.parse(e.data);
 
         if (data.status === 'error') {
           eventSource.close();
+          eventSourceRef.current = null;
           clearInterval(timerIntervalRef.current);
           setError(data.error || 'An unknown error occurred.');
           clearLoading();
@@ -103,6 +118,10 @@ export default function App() {
 
         if (data.progress !== undefined) {
           setProgress(data.progress);
+        }
+
+        if (data.resolvedTicker) {
+          setResolvedTicker(data.resolvedTicker);
         }
 
         if (data.status === 'processing' && data.step) {
@@ -131,6 +150,7 @@ export default function App() {
 
         if (data.status === 'complete') {
           eventSource.close();
+          eventSourceRef.current = null;
           clearInterval(timerIntervalRef.current);
           completeActiveStep();
 
@@ -150,6 +170,7 @@ export default function App() {
 
       eventSource.onerror = () => {
         eventSource.close();
+        eventSourceRef.current = null;
         clearInterval(timerIntervalRef.current);
         setError('Connection to server lost. Please try again.');
         clearLoading();
@@ -173,7 +194,12 @@ export default function App() {
     <div className="container">
       <Header theme={theme} onToggleTheme={toggleTheme} />
 
-      <SearchBar onSearch={fetchPrediction} isLoading={isLoading} />
+      <SearchBar 
+        onSearch={fetchPrediction} 
+        onCancel={cancelPrediction}
+        isLoading={isLoading} 
+        resolvedTicker={resolvedTicker}
+      />
 
       <Loader
         visible={isLoaderVisible}

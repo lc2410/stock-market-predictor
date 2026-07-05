@@ -243,6 +243,12 @@ p {
   cursor: not-allowed;
   box-shadow: none;
 }
+#predictBtn.cancel-btn {
+  background-color: var(--brand-danger);
+}
+#predictBtn.cancel-btn:hover {
+  filter: brightness(0.9);
+}
 
 /* Tabbed Navigation Layout */
 .tabs-container {
@@ -610,7 +616,8 @@ p {
 .autocomplete-item:last-child {
   border-bottom: none;
 }
-.autocomplete-item:hover {
+.autocomplete-item:hover,
+.autocomplete-item.active {
   background-color: var(--card-bg);
 }
 .ac-sym {
@@ -950,3 +957,15 @@ p {
   }
 }
 
+.read-more-inline {
+  color: var(--brand-primary);
+  text-decoration: none;
+  font-weight: 600;
+  margin-left: 6px;
+  transition: color 0.2s ease;
+}
+
+.read-more-inline:hover {
+  text-decoration: underline;
+  color: var(--brand-primary-hover);
+}

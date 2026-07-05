@@ -9,6 +9,7 @@ and structures the final JSON payload for the user interface.
 from flask import Blueprint, jsonify, Response, stream_with_context
 import requests
 import json
+import urllib.parse
 import logging
 import pandas as pd
 import yfinance as yf
@@ -150,9 +151,25 @@ def search(query):
         logger.error(f"Search API error: {e}")
         return jsonify([])
 
+def _resolve_search_query(query):
+    """Uses Yahoo Search API to resolve a raw text query (e.g. 'Apple') to a ticker symbol (e.g. 'AAPL')."""
+    try:
+        url = f"https://query2.finance.yahoo.com/v1/finance/search?q={urllib.parse.quote(query)}&quotesCount=5&newsCount=0"
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        res = requests.get(url, headers=headers, timeout=5).json()
+        if 'quotes' in res and res['quotes']:
+            query_upper = query.upper()
+            for q in res['quotes']:
+                if q.get('symbol', '').upper() == query_upper:
+                    return query_upper
+            return res['quotes'][0].get('symbol', query).upper()
+    except Exception as e:
+        logger.error(f"Error resolving query {query}: {e}")
+    return query.upper()
+
 def _run_prediction_pipeline(safe_ticker):
     """Generator that runs the entire ML pipeline and yields progress updates, ending with the final payload."""
-    yield {"status": "processing", "step": "Gathering financial data", "progress": 15}
+    yield {"status": "processing", "step": "Gathering financial data", "progress": 15, "resolvedTicker": safe_ticker}
     
     # Fetch Company Fundamentals
     info, is_fund, is_crypto, top_holdings, top_sectors = _fetch_company_fundamentals(safe_ticker)
@@ -274,7 +291,8 @@ def predict(ticker):
 @api_bp.route('/predict_stream/<string:ticker>', methods=['GET'])
 def predict_stream(ticker):
     """SSE Streaming Endpoint for UI Progress updates."""
-    safe_ticker = ticker.replace('\n', '').replace('\r', '').upper()
+    raw_ticker = ticker.replace('\n', '').replace('\r', '').strip()
+    safe_ticker = _resolve_search_query(raw_ticker)
     
     def generate():
         try:

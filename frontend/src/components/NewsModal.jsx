@@ -72,7 +72,34 @@ export default function NewsModal({ article, onClose }) {
           </a>
         </div>
         <div className="modal-body">
-          <p id="modalSummary">{article.summary}</p>
+          {article.summary ? (
+            <p id="modalSummary">
+              {article.summary.replace(/\s*\[?(\.\.\.|…)\]?\s*$/, '')}
+              {(article.summary.match(/\s*\[?(\.\.\.|…)\]?\s*$/)) && (
+                <a 
+                  href={article.url} 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  className="read-more-inline"
+                >
+                  ... [Read full article]
+                </a>
+              )}
+            </p>
+          ) : (
+            <p id="modalSummary" style={{ fontStyle: 'italic', color: 'var(--text-muted)' }}>
+              A preview summary is not available for this article.{' '}
+              <a 
+                href={article.url} 
+                target="_blank" 
+                rel="noopener noreferrer" 
+                className="read-more-inline"
+                style={{ fontStyle: 'normal', marginLeft: 0 }}
+              >
+                Read the full article on {article.publisher}
+              </a>
+            </p>
+          )}
         </div>
       </div>
     </div>,

@@ -7,8 +7,8 @@ def test_analyze_news_sentiment_success(mock_analyzer, mock_ticker):
     """Tests that FinBERT correctly processes and categorizes headlines."""
     mock_instance = MagicMock()
     mock_instance.news = [
-        {"title": "Company profits soar"},
-        {"content": {"title": "Company faces massive lawsuit"}}
+        {"title": "TEST profits soar"},
+        {"content": {"title": "TEST faces massive lawsuit"}}
     ]
     mock_ticker.return_value = mock_instance
     
@@ -21,8 +21,8 @@ def test_analyze_news_sentiment_success(mock_analyzer, mock_ticker):
     assert score == 0.1
     assert "positive" in news_dict
     assert "negative" in news_dict
-    assert news_dict["positive"][0]["title"] == "Company profits soar"
-    assert news_dict["negative"][0]["title"] == "Company faces massive lawsuit"
+    assert news_dict["positive"][0]["title"] == "TEST profits soar"
+    assert news_dict["negative"][0]["title"] == "TEST faces massive lawsuit"
 
 @patch('models.sentiment_analysis.yf.Ticker')
 def test_analyze_news_sentiment_bad_format(mock_ticker):
@@ -39,7 +39,7 @@ def test_analyze_news_sentiment_content_format(mock_ticker):
     mock_instance = MagicMock()
     mock_instance.news = [{
         "content": {
-            "title": "Good news",
+            "title": "GOOD news",
             "summary": "Summary",
             "provider": "Provider"
         }

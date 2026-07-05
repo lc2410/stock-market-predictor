@@ -3,12 +3,20 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 /**
  * Search bar with debounced autocomplete, clear button, and forecast trigger.
  */
-export default function SearchBar({ onSearch, isLoading }) {
+export default function SearchBar({ onSearch, onCancel, isLoading, resolvedTicker }) {
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState([]);
+  const [selectedIndex, setSelectedIndex] = useState(-1);
   const debounceRef = useRef(null);
   const latestSearchIdRef = useRef(0);
   const inputRef = useRef(null);
+
+  // Sync with resolved ticker from backend if applicable
+  useEffect(() => {
+    if (resolvedTicker) {
+      setQuery(resolvedTicker);
+    }
+  }, [resolvedTicker]);
 
   // Clear suggestions when clicking outside
   useEffect(() => {
@@ -23,6 +31,11 @@ export default function SearchBar({ onSearch, isLoading }) {
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
+
+  // Reset selected index when suggestions change
+  useEffect(() => {
+    setSelectedIndex(suggestions.length > 0 && suggestions[0].symbol ? 0 : -1);
+  }, [suggestions]);
 
   const fetchSuggestions = useCallback(async (value) => {
     // Validate input
@@ -70,12 +83,22 @@ export default function SearchBar({ onSearch, isLoading }) {
   };
 
   const handleKeyDown = (e) => {
-    if (e.key === 'Enter') {
+    if (e.key === 'ArrowDown') {
       e.preventDefault();
-      clearTimeout(debounceRef.current);
-      latestSearchIdRef.current++;
-      setSuggestions([]);
-      onSearch(query.trim().toUpperCase());
+      setSelectedIndex(prev => (prev < suggestions.length - 1 ? prev + 1 : prev));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedIndex(prev => (prev > 0 ? prev - 1 : -1));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (selectedIndex >= 0 && suggestions[selectedIndex] && suggestions[selectedIndex].symbol) {
+        handleSelect(suggestions[selectedIndex].symbol);
+      } else {
+        clearTimeout(debounceRef.current);
+        latestSearchIdRef.current++;
+        setSuggestions([]);
+        onSearch(query.trim().toUpperCase());
+      }
     }
   };
 
@@ -103,6 +126,11 @@ export default function SearchBar({ onSearch, isLoading }) {
           onChange={handleInput}
           onKeyDown={handleKeyDown}
           disabled={isLoading}
+          role="combobox"
+          aria-autocomplete="list"
+          aria-controls="autocompleteResults"
+          aria-expanded={suggestions.length > 0}
+          aria-activedescendant={selectedIndex >= 0 ? `suggestion-${selectedIndex}` : undefined}
         />
         {query.length > 0 && !isLoading && (
           <button
@@ -115,18 +143,20 @@ export default function SearchBar({ onSearch, isLoading }) {
           </button>
         )}
         {suggestions.length > 0 && (
-          <div id="autocompleteResults" className="autocomplete-items">
+          <div id="autocompleteResults" className="autocomplete-items" role="listbox">
             {suggestions.map((item, idx) =>
               item.symbol ? (
                   <div
                     key={item.symbol + idx}
-                    className="autocomplete-item"
+                    id={`suggestion-${idx}`}
+                    className={`autocomplete-item ${idx === selectedIndex ? 'active' : ''}`}
                     data-symbol={item.symbol}
                     onClick={() => handleSelect(item.symbol)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' || e.key === ' ') handleSelect(item.symbol);
                     }}
-                    role="button"
+                    role="option"
+                    aria-selected={idx === selectedIndex}
                     tabIndex={0}
                   >
                   <span className="ac-sym">{item.symbol}</span>
@@ -143,11 +173,10 @@ export default function SearchBar({ onSearch, isLoading }) {
       </div>
       <button
         id="predictBtn"
-        onClick={handleSubmit}
-        disabled={isLoading}
-        style={{ cursor: isLoading ? 'not-allowed' : '' }}
+        onClick={isLoading ? onCancel : handleSubmit}
+        className={isLoading ? 'cancel-btn' : ''}
       >
-        Get Forecast
+        {isLoading ? 'Cancel' : 'Get Forecast'}
       </button>
     </div>
   );
