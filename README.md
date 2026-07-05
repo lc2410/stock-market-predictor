@@ -238,5 +238,5 @@ You can access the live production environment hosted on Oracle Cloud here: [htt
 * **Back-End:** Python 3.12, Flask, Server-Sent Events (SSE)
 * **Machine Learning:** Scikit-Learn, Pandas, NumPy, HuggingFace Transformers
 * **Data Sourcing:** yfinance (Yahoo Finance API)
-* **Front-End:** React 18, Vite, Vanilla CSS, Chart.js
-* **Testing:** Pytest (Unit/Integration), Playwright (E2E UI Testing), ESLint
+* **Front-End:** React 18, Vite, Javascript, CSS, Chart.js, Node.js
+* **Testing & Code Styling:** Pytest (Unit/Integration), Playwright (E2E UI Testing), ESLint, flake8
