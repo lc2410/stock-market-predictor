@@ -1,0 +1,252 @@
+"""Prediction service orchestrating the ML pipeline for stock forecasting."""
+
+import pandas as pd
+import yfinance as yf
+import requests
+import urllib.parse
+import logging
+from pandas.tseries.offsets import CustomBusinessDay
+from pandas.tseries.holiday import USFederalHolidayCalendar
+from ml_models.price_forecasting import run_price_prediction
+from ml_models.dividend_forecasting import run_dividend_prediction
+from ml_models.sentiment_analysis import analyze_news_sentiment, calculate_asset_grade
+from utils.service_utils import calculate_52_week_high_low, calculate_52_week_return, calculate_average_volume, calculate_ttm_dividend_yield, fetch_data, get_chart_data, generate_future_chart_data
+
+logger = logging.getLogger(__name__)
+
+def sanitize_for_json(obj):
+    """Recursively scrubs NaN and Infinity from the payload so JSON.parse never crashes."""
+    if isinstance(obj, dict):
+        return {k: sanitize_for_json(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [sanitize_for_json(v) for v in obj]
+    elif isinstance(obj, float):
+        if pd.isna(obj) or obj == float('inf') or obj == float('-inf'):
+            return None
+    elif pd.isna(obj):
+        return None
+    return obj
+
+def build_frontend_payload(ticker, raw_ml_data, chart_history, nlp_data, info, is_crypto=False):
+    """Formats raw ML/NLP math into UI-ready strings and percentages."""
+    try:
+        company_name = info.get("longName") or info.get("shortName") or ticker
+    except Exception:
+        company_name = ticker
+
+    if is_crypto:
+        next_trading_day = (raw_ml_data["anchor_date"] + pd.Timedelta(days=1)).strftime('%Y-%m-%d')
+    else:
+        next_trading_day = (raw_ml_data["anchor_date"] + CustomBusinessDay(calendar=USFederalHolidayCalendar())).strftime('%Y-%m-%d')
+
+    next_div_date = raw_ml_data["next_dividend_date"].strftime('%Y-%m-%d') if pd.notna(raw_ml_data["next_dividend_date"]) else "N/A"
+
+    return {
+        "Ticker": ticker,
+        "Company_Name": company_name,
+        "Next_Trading_Day": next_trading_day,
+        "Next_Dividend_Date": next_div_date,
+        "Today_Close": raw_ml_data["today_close"],
+        "Stock_Grade": nlp_data["grade"],
+        "News_Sentiment": nlp_data["sentiment"],
+        "AI_Reasoning": nlp_data["reasoning"],
+        "Price_Forecasts": raw_ml_data["price_forecasts"],
+        "Div_Forecasts": raw_ml_data["div_forecasts"],
+        "Chart_Future_Dates": raw_ml_data["chart_future_dates"],
+        "Chart_Future_Prices": raw_ml_data["chart_future_prices"],
+        "Chart_Future_Upper": raw_ml_data["chart_future_upper"],
+        "Chart_Future_Lower": raw_ml_data["chart_future_lower"],
+        "Train_Fit_Dates": raw_ml_data["train_fit_dates"],
+        "Train_Fit_Prices": raw_ml_data["train_fit_prices"],
+        "Div_Future_Dates": raw_ml_data["div_future_dates"],
+        "Div_Future_Amounts": raw_ml_data["div_future_amounts"],
+        "Div_Future_Upper": raw_ml_data["div_future_upper"],
+        "Div_Future_Lower": raw_ml_data["div_future_lower"],
+        "Train_Fit_Div_Dates": raw_ml_data["train_fit_div_dates"],
+        "Train_Fit_Div_Amounts": raw_ml_data["train_fit_div_amounts"],
+        "Chart_History": chart_history
+    }
+
+def fetch_company_fundamentals(safe_ticker):
+    """Helper to fetch company info, determine asset type, and extract fund holdings/sectors if applicable."""
+    stock_obj = yf.Ticker(safe_ticker)
+    try:
+        info = stock_obj.info
+    except Exception:
+        info = {}
+
+    quote_type = info.get("quoteType", "").upper()
+    is_fund = quote_type in ["ETF", "MUTUALFUND"]
+    is_crypto = quote_type == "CRYPTOCURRENCY"
+    top_holdings = []
+    top_sectors = []
+    
+    if is_fund:
+        try:
+            holdings_data = stock_obj.funds_data.top_holdings
+            if holdings_data is not None and not holdings_data.empty:
+                for sym, row in holdings_data.head(10).iterrows():
+                    weight = None
+                    company_name = sym 
+                    for val in row.values:
+                        if isinstance(val, (float, int)):
+                            weight = val
+                        elif isinstance(val, str) and val.strip():
+                            company_name = val.strip()
+                    val_str = f"{weight * 100:.2f}%" if weight is not None and weight <= 1.0 else (f"{weight:.2f}%" if weight is not None else "")
+                    top_holdings.append({"symbol": sym, "name": company_name, "weight": val_str})
+            
+            sector_data = stock_obj.funds_data.sector_weightings
+            if sector_data is not None:
+                sector_dict = sector_data.to_dict() if isinstance(sector_data, pd.Series) else sector_data
+                sorted_sectors = sorted(sector_dict.items(), key=lambda item: item[1], reverse=True)
+                for raw_sector, weight in sorted_sectors:
+                    if isinstance(weight, (float, int)) and weight > 0:
+                        clean_sec = raw_sector.replace('_', ' ').title()
+                        if clean_sec.lower() == 'realestate':
+                            clean_sec = 'Real Estate'
+                        elif clean_sec.lower() == 'basicmaterials':
+                            clean_sec = 'Basic Materials'
+                        elif clean_sec.lower() == 'financialservices':
+                            clean_sec = 'Financial Services'
+                        elif clean_sec.lower() == 'communicationservices':
+                            clean_sec = 'Communication Services'
+                        val_str = f"{weight * 100:.2f}%" if weight <= 1.0 else f"{weight:.2f}%"
+                        top_sectors.append({"sector": clean_sec, "weight": val_str})
+        except Exception as e:
+            logger.warning(f"Failed to parse Fund data: {e}")
+            
+    return info, is_fund, is_crypto, top_holdings, top_sectors
+
+def resolve_search_query(query):
+    """Uses Yahoo Search API to resolve a raw text query (e.g. 'Apple') to a ticker symbol (e.g. 'AAPL')."""
+    try:
+        url = f"https://query2.finance.yahoo.com/v1/finance/search?q={urllib.parse.quote(query)}&quotesCount=5&newsCount=0"
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        res = requests.get(url, headers=headers, timeout=5).json()
+        if 'quotes' in res and res['quotes']:
+            query_upper = query.upper()
+            for q in res['quotes']:
+                if q.get('symbol', '').upper() == query_upper:
+                    return query_upper
+            return res['quotes'][0].get('symbol', query).upper()
+    except Exception as e:
+        logger.error(f"Error resolving query {query}: {e}")
+    return query.upper()
+
+def run_prediction_pipeline(safe_ticker):
+    """Generator that runs the entire ML pipeline and yields progress updates, ending with the final payload."""
+    yield {"status": "processing", "step": "Gathering financial data", "progress": 15, "resolvedTicker": safe_ticker}
+    
+    info, is_fund, is_crypto, top_holdings, top_sectors = fetch_company_fundamentals(safe_ticker)
+
+    price_data_raw, div_data_raw = fetch_data(safe_ticker, target_window=1260, is_crypto=is_crypto)
+    if price_data_raw is None:
+        yield {"status": "error", "error": f"Invalid ticker or insufficient data for {safe_ticker}."}
+        return
+        
+    anchor_date = price_data_raw.index[-1]
+    today_close = float(price_data_raw["Close"].iloc[-1])
+
+    # Overwrite yfinance info with our custom Pandas calculations
+    info["currentPrice"] = today_close
+    
+    high_52, low_52 = calculate_52_week_high_low(price_data_raw)
+    info["fiftyTwoWeekHigh"] = float(high_52)
+    info["fiftyTwoWeekLow"] = float(low_52)
+    
+    ret_52 = calculate_52_week_return(price_data_raw)
+    if ret_52 is not None:
+        info["52WeekChange"] = float(ret_52)
+        
+    avg_vol = calculate_average_volume(price_data_raw, window=30)
+    info["averageVolume"] = float(avg_vol)
+    
+    # Temporarily attach dividends for the yield calculation
+    if div_data_raw is not None and not div_data_raw.empty:
+        price_data_raw["Dividends"] = div_data_raw["Dividends"]
+    
+    ttm_div_yield = calculate_ttm_dividend_yield(price_data_raw, today_close)
+    if ttm_div_yield > 0:
+        info["dividendYield"] = float(ttm_div_yield)
+
+    yield {"status": "processing", "step": "Predicting future prices", "progress": 30}
+    
+    price_results = run_price_prediction(price_data_raw, is_crypto=is_crypto, price_window=1260)
+    chart_future_dates, chart_future_prices, chart_future_upper, chart_future_lower = generate_future_chart_data(
+        price_results["p_anchors"], price_results["p_lower"], price_results["p_upper"], anchor_date, is_crypto, is_div=False
+    )
+
+    yield {"status": "processing", "step": "Predicting dividend payouts", "progress": 45}
+    
+    div_results = run_dividend_prediction(div_data_raw, anchor_date, div_window=25)
+    div_future_dates, div_future_amounts, div_future_upper, div_future_lower = generate_future_chart_data(
+        div_results["d_anchors"], div_results["d_lower"], div_results["d_upper"], anchor_date, is_crypto, is_div=True, avg_days_between=div_results["avg_days_between"]
+    )
+    
+    train_fit_div_dates = div_results["train_fit_div_dates"][-5:] if div_results["has_enough_div_data"] else []
+    train_fit_div_amounts = div_results["train_fit_div_amounts"][-5:] if div_results["has_enough_div_data"] else []
+    
+    days_in_year = 365 if is_crypto else 252
+    train_fit_dates = price_results["train_fit_dates"][-days_in_year:]
+    train_fit_prices = price_results["train_fit_prices"][-days_in_year:]
+    
+    chart_history = get_chart_data(
+        price_data=price_data_raw, 
+        div_data=div_data_raw,
+        is_crypto=is_crypto, 
+        show_all_prices=not price_results["has_enough_price_data"], 
+        show_all_divs=not div_results["has_enough_div_data"]
+    )
+    
+    raw_ml_data = {
+        "anchor_date": anchor_date,
+        "today_close": today_close,
+        "next_dividend_date": div_results["next_dividend_date"],
+        "price_forecasts": price_results["price_forecasts"],
+        "chart_future_dates": chart_future_dates,
+        "chart_future_prices": chart_future_prices,
+        "chart_future_upper": chart_future_upper,
+        "chart_future_lower": chart_future_lower,
+        "train_fit_dates": train_fit_dates,
+        "train_fit_prices": train_fit_prices,
+        "div_forecasts": div_results["div_forecasts"],
+        "div_future_dates": div_future_dates,
+        "div_future_amounts": div_future_amounts,
+        "div_future_upper": div_future_upper,
+        "div_future_lower": div_future_lower,
+        "train_fit_div_dates": train_fit_div_dates,
+        "train_fit_div_amounts": train_fit_div_amounts,
+    }
+
+    yield {"status": "processing", "step": "Reading latest news", "progress": 60}
+    
+    sentiment_score, news_dict = analyze_news_sentiment(safe_ticker)
+    
+    yield {"status": "processing", "step": "Analyzing market sentiment", "progress": 85}
+    
+    stock_grade, general_sentiment, fundamentals_dict = calculate_asset_grade(
+        raw_ml_data.get("price_forecasts", {}), 
+        raw_ml_data.get("div_forecasts", {}), 
+        sentiment_score,
+        info,
+        is_fund
+    )
+    
+    master_reasoning = {
+        "news": news_dict,
+        "fundamentals": fundamentals_dict,
+        "etf_holdings": top_holdings,
+        "etf_sectors": top_sectors
+    }
+    
+    nlp_data = {
+        "sentiment": general_sentiment,
+        "reasoning": master_reasoning,
+        "grade": stock_grade
+    }
+
+    final_payload = build_frontend_payload(safe_ticker, raw_ml_data, chart_history, nlp_data, info, is_crypto)
+    clean_result = sanitize_for_json(final_payload)
+    
+    yield {"status": "complete", "progress": 100, "result": clean_result}

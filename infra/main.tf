@@ -92,8 +92,8 @@ resource "oci_core_instance" "app_server" {
   shape               = "VM.Standard.A1.Flex"
 
   shape_config {
-    ocpus         = 4
-    memory_in_gbs = 24
+    ocpus         = 2
+    memory_in_gbs = 12
   }
 
   source_details {
@@ -145,8 +145,22 @@ resource "oci_core_instance" "app_server" {
 
       systemctl start forecaster
       systemctl enable forecaster
+
+      # Setup Cron Job for Asynchronous Database Updates (e.g., Weekdays at 18:00 UTC)
+      cat << 'CRON' > /etc/cron.d/stock-market-updater
+      0 18 * * 1-5 root cd /home/ubuntu/stock-market-predictor && /home/ubuntu/stock-market-predictor/venv/bin/python3 -m database.update_db >> /home/ubuntu/stock-market-predictor/database_update.log 2>&1
+CRON
+      chmod 0644 /etc/cron.d/stock-market-updater
+      systemctl restart cron
     EOF
     )
+  }
+
+  lifecycle {
+    ignore_changes = [
+      source_details[0].source_id,
+      metadata["user_data"],
+    ]
   }
 }
 

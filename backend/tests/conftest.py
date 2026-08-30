@@ -1,3 +1,4 @@
+"""Shared pytest fixtures for backend tests."""
 import pytest
 import pandas as pd
 import numpy as np

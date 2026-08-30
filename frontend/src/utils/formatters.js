@@ -1,7 +1,7 @@
-/**
- * Shared utility functions for formatting dates, currency, and theme colors.
- */
 
+/**
+ * Utility functions for formatting strings and extracting CSS variables for charts.
+ */
 export const formatDate = (dateStr) => {
   if (!dateStr || dateStr === 'N/A') return 'N/A';
   const parts = dateStr.split('-');
@@ -23,9 +23,6 @@ export const getThemeColors = () => {
   };
 };
 
-/**
- * Standardises incoming timestamps to YYYY-MM-DD for reliable Map indexing.
- */
 export const normalizeDate = (isoString) => {
   if (!isoString) return '';
   return new Date(isoString).toISOString().split('T')[0];

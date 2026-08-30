@@ -1,0 +1,141 @@
+import pytest
+import pandas as pd
+from unittest.mock import patch, MagicMock, call
+import sys
+import os
+
+# Ensure backend is in path
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+
+from database.scripts.update_db import (
+    get_retry_session,
+    _download_ticker_history,
+    _write_benchmarks,
+    _write_headlines,
+    update_database,
+    CHUNK_SIZE
+)
+
+def test_get_retry_session():
+    session = get_retry_session()
+    assert session is not None
+    assert 'User-Agent' in session.headers
+    # Test adapter exists
+    assert 'http://' in session.adapters
+
+@patch('database.scripts.update_db.yf.download')
+@patch('database.scripts.update_db.time.sleep')
+@patch('database.scripts.update_db.get_retry_session')
+def test_download_ticker_history(mock_session, mock_sleep, mock_download):
+    mock_conn = MagicMock()
+    
+    # Test with empty chunk data
+    mock_download.return_value = pd.DataFrame()
+    _download_ticker_history(['AAPL'], mock_conn)
+    # Should not write to sql if empty
+    mock_conn.execute.assert_not_called()
+    
+    # Test with valid multiindex chunk data
+    dates = pd.date_range("2023-01-01", periods=2, freq="D")
+    df = pd.DataFrame({
+        "Close": [150, 151],
+        "Open": [149, 150],
+        "High": [155, 156],
+        "Low": [145, 146],
+        "Volume": [100, 200],
+        "Dividends": [0, 0],
+        "Stock Splits": [0, 0]
+    }, index=dates)
+    df.columns = pd.MultiIndex.from_product([['AAPL'], df.columns])
+    
+    mock_download.return_value = df
+    
+    # Need to mock to_sql by patching the pandas dataframe since pd.concat returns a new df
+    # Actually _download_ticker_history calls df_stacked.to_sql, which uses pandas to_sql method.
+    # We can mock pd.DataFrame.to_sql
+    with patch.object(pd.DataFrame, 'to_sql') as mock_to_sql:
+        _download_ticker_history(['AAPL'], mock_conn)
+        mock_to_sql.assert_called_once()
+        args, kwargs = mock_to_sql.call_args
+        assert args[0] == 'ticker_prices'
+
+@patch('database.scripts.update_db.yf.download')
+@patch('database.scripts.update_db.time.sleep')
+def test_download_ticker_history_exception(mock_sleep, mock_download):
+    mock_conn = MagicMock()
+    mock_download.side_effect = Exception("Download failed")
+    # Should handle gracefully and not crash
+    _download_ticker_history(['AAPL'], mock_conn)
+
+def test_write_benchmarks():
+    mock_conn = MagicMock()
+    
+    benchmarks = [{
+        "benchmark_symbol": "SPY",
+        "benchmark_name": "SPDR S&P 500",
+        "current_price": 400.0,
+        "change_pct": 1.5,
+        "dates": ["2023-01-01"],
+        "history": [400.0],
+        "open": [395.0],
+        "high": [405.0],
+        "low": [390.0],
+        "volume": [1000],
+        "tickers": [{
+            "ticker_symbol": "AAPL",
+            "company_name": "Apple Inc.",
+            "sector": "Technology",
+            "market_cap": 2000000,
+            "weight": 0.05
+        }]
+    }]
+    
+    _write_benchmarks(benchmarks, mock_conn)
+    # Check it called execute for deletes
+    assert mock_conn.execute.call_count > 4 # 4 deletes + inserts
+    
+@patch('database.scripts.update_db.fetch_headlines')
+def test_write_headlines(mock_fetch):
+    mock_conn = MagicMock()
+    mock_fetch.return_value = [{
+        "title": "Test Title",
+        "publisher": "Test Pub",
+        "link": "http://link",
+        "summary": "Sum",
+        "time": "2023-01-01"
+    }]
+    
+    _write_headlines(mock_conn)
+    assert mock_conn.execute.call_count == 2 # Delete + Insert
+
+@patch('database.scripts.update_db.sqlite3.connect')
+@patch('database.scripts.update_db.os.listdir')
+@patch('database.scripts.update_db.open', new_callable=MagicMock)
+@patch('database.scripts.update_db.fetch_benchmarks')
+@patch('database.scripts.update_db._download_ticker_history')
+@patch('database.scripts.update_db._write_benchmarks')
+@patch('database.scripts.update_db._write_headlines')
+def test_update_database(mock_write_head, mock_write_bench, mock_down, mock_fetch_bench, mock_open, mock_listdir, mock_connect):
+    mock_conn = MagicMock()
+    mock_connect.return_value = mock_conn
+    mock_listdir.return_value = ['table1.sql']
+    
+    # Setup mock file read
+    mock_file = MagicMock()
+    mock_file.__enter__.return_value.read.return_value = "CREATE TABLE dummy;"
+    mock_open.return_value = mock_file
+    
+    mock_fetch_bench.return_value = [{
+        "benchmark_symbol": "SPY",
+        "tickers": [{"ticker_symbol": "AAPL"}]
+    }]
+    
+    update_database()
+    
+    mock_connect.assert_called_once()
+    mock_conn.executescript.assert_called_once()
+    mock_down.assert_called_once()
+    mock_write_bench.assert_called_once()
+    mock_write_head.assert_called_once()
+    mock_conn.commit.assert_called_once()
+    mock_conn.close.assert_called_once()

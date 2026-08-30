@@ -1,9 +1,9 @@
-import { formatDate, formatMoney } from '../../utils/formatters';
+import "./HorizonCard.css";
+import { formatDate, formatMoney } from "../../utils/formatters";
 
 /**
- * Large horizon forecast card for displaying prediction summaries.
- * Shows direction pill + confidence badge on the left, and forecasted amount +
- * expected range on the right.
+ * A card component displaying key data points and predictions 
+ * (e.g., predicted direction, confidence, and target range).
  */
 export default function HorizonCard({
   title,
@@ -14,16 +14,16 @@ export default function HorizonCard({
   amt,
   amtLower,
   amtUpper,
-  dirLabel = 'Predicted Direction (vs. Last Recorded Price)',
+  dirLabel = "Predicted Direction (vs. Last Recorded Price)",
 }) {
-  const isUp = direction === 'Up';
-  const dirClass = isUp ? 'pill-up' : 'pill-down';
-  const arrowIcon = isUp ? '↑' : '↓';
+  const isUp = direction === "Up";
+  const dirClass = isUp ? "pill-up" : "pill-down";
+  const arrowIcon = isUp ? "↑" : "↓";
 
   return (
     <div className="premium-horizon-card">
       <div className="horizon-header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div className="horizon-header-title">
           <h4 className="horizon-title">{title}</h4>
         </div>
         <div className="horizon-date-badge">{formatDate(dateStr)}</div>
@@ -31,7 +31,7 @@ export default function HorizonCard({
       <div className="horizon-body">
         <div className="stat-box">
           <span className="stat-label">{dirLabel}</span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+          <div className="horizon-body-direction">
             <span className={`direction-pill ${dirClass}`}>
               {arrowIcon} {direction}
             </span>
@@ -41,7 +41,7 @@ export default function HorizonCard({
         <div className="stat-divider" />
         <div className="stat-box">
           <span className="stat-label">{amtTitle}</span>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginTop: '4px' }}>
+          <div className="horizon-body-range">
             <span className="stat-val">{formatMoney(amt)}</span>
             <span className="conf-badge">
               Range: {formatMoney(amtLower)} &ndash; {formatMoney(amtUpper)}

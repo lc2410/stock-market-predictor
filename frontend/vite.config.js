@@ -8,6 +8,7 @@ export default defineConfig({
     proxy: {
       '/search': 'http://127.0.0.1:5001',
       '/predict': 'http://127.0.0.1:5001',
+      '/screener': 'http://127.0.0.1:5001',
       '/predict_stream': {
         target: 'http://127.0.0.1:5001',
         // SSE requires these proxy settings for correct streaming behaviour

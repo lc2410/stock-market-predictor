@@ -1,0 +1,43 @@
+.chart-box {
+  background: var(--input-bg);
+  border: 1px solid var(--outline-border);
+  border-radius: 16px;
+  padding: 24px;
+  height: 450px;
+  min-width: 0;
+}
+
+.generic-chart-outer-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.generic-chart-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-main);
+  text-align: center;
+  margin-bottom: 4px;
+}
+
+.generic-chart-subtitle-price {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 48px;
+}
+
+.generic-chart-legend-container {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+.generic-chart-canvas-wrapper {
+  flex-grow: 1;
+  position: relative;
+  width: 100%;
+  min-height: 0;
+}
