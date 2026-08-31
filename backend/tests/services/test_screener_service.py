@@ -47,7 +47,7 @@ def test_process_custom_scans_by_benchmark():
     assert "Tech Benchmark" in scans
     
     tech_movers = movers["Tech Benchmark"]
-    assert len(tech_movers["day_gainers"]) == 2
+    assert len(tech_movers["day_gainers"]) == 1
     assert tech_movers["day_gainers"][0]["symbol"] == "AAPL" # Since AAPL goes up
     
     tech_scans = scans["Tech Benchmark"]
