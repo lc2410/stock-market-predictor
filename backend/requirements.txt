@@ -10,7 +10,6 @@ pytest-cov
 flake8
 transformers 
 torch
-cachetools
 requests
 beautifulsoup4
 lxml

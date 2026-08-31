@@ -27,12 +27,14 @@ stock-market-predictor/
 ├── .github/workflows/
 │   └── deploy.yml            # Automated CI/CD pipeline configuration
 ├── backend/
-│   ├── apis/                 # Flask routing and API endpoints
-│   ├── models/               # Scikit-learn ML pipeline & data fetching
+│   ├── controllers/          # Flask routing and API endpoints
+│   ├── database/             # Database DDL/DML and initialization scripts
+│   ├── ml_models/            # Scikit-learn ML pipeline & data fetching
 │   │   ├── assets/           # ML model assets and weights
-│   │   ├── scripts/          # Model download scripts
-│   │   └── utils/            # Helper utilities and shared logic
+│   │   └── scripts/          # Model download scripts
+│   ├── services/             # Business logic layer
 │   ├── tests/                # Pytest unit and integration test suite
+│   ├── utils/                # Helper utilities and shared logic
 │   └── app.py                # Flask application bootloader
 ├── frontend/
 │   ├── public/               # Static assets (logos, icons)

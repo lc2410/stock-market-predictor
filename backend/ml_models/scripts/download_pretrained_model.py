@@ -6,7 +6,7 @@ from huggingface_hub import snapshot_download
 def download_finbert():
     """Downloads FinBERT model weights from HuggingFace Hub to the local assets directory."""
     print("Downloading ProsusAI/finbert model weights locally...")
-    # Save the model inside backend/models/assets/finbert_weights
+    # Save the model inside backend/ml_models/assets/finbert_weights
     model_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "finbert_weights")
     os.makedirs(model_dir, exist_ok=True)
     

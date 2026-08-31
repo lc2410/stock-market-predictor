@@ -85,7 +85,7 @@ jobs:
         run: pip install -r backend/requirements.txt
         
       - name: Download NLP Model
-        run: PYTHONPATH=. python backend/models/scripts/download_pretrained_model.py
+        run: PYTHONPATH=. python backend/ml_models/scripts/download_pretrained_model.py
 
       - name: Run Pytest Suite
         run: PYTHONPATH=. python -m pytest backend/tests/ --cov=. --cov-report=xml
@@ -174,7 +174,7 @@ jobs:
             # Install/update Python dependencies
             source venv/bin/activate
             pip install -r backend/requirements.txt
-            python backend/models/scripts/download_pretrained_model.py
+            python backend/ml_models/scripts/download_pretrained_model.py
 
             # Install Node.js if not present
             if ! command -v node &> /dev/null; then
