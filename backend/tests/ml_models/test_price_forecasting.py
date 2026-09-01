@@ -1,10 +1,12 @@
 """Tests for the price forecasting module."""
 import pandas as pd
+
 from ml_models.price_forecasting import (
-    _engineer_price_features, 
+    _engineer_price_features,
     _train_multi_horizon_price,
-    run_price_prediction
+    run_price_prediction,
 )
+
 
 def test_engineer_price_features_creates_correct_columns(dummy_stock_data):
     """Tests that feature engineering produces the expected technical indicator columns."""

@@ -1,6 +1,8 @@
 """Tests for the sentiment analysis and asset grading modules."""
+from unittest.mock import MagicMock, patch
+
 from ml_models.sentiment_analysis import analyze_news_sentiment, calculate_asset_grade
-from unittest.mock import patch, MagicMock
+
 
 @patch('ml_models.sentiment_analysis.yf.Ticker')
 @patch('ml_models.sentiment_analysis.SENTIMENT_ANALYZER')
@@ -52,7 +54,7 @@ def test_analyze_news_sentiment_content_format(mock_ticker):
     # We mock sentiment_analyzer to not actually run the ML model
     with patch('ml_models.sentiment_analysis.SENTIMENT_ANALYZER') as mock_analyzer:
         mock_analyzer.return_value = [{'label': 'positive', 'score': 0.9}]
-        score, details = analyze_news_sentiment("GOOD")
+        score, _details = analyze_news_sentiment("GOOD")
         assert score == 0.9
 
 @patch('ml_models.sentiment_analysis.yf.Ticker')
@@ -143,13 +145,13 @@ def test_calculate_asset_grade_fund_fallback():
     """Tests the smart fallback logic for ETFs and Cryptocurrencies."""
     info = {"quoteType": "ETF"}
     
-    grade, sentiment, fundamentals = calculate_asset_grade(
+    fundamentals = calculate_asset_grade(
         price_forecasts={"Next_Day": {"Direction": "Up", "Direction_Confidence": 60.0}},
         div_forecasts={"Next_Payout": {"Direction": "Up", "Direction_Confidence": 65.0}},
         sentiment_score=0.1,
         info=info,
         is_fund=True
-    )
+    )[2]
     
     # Assert that it receives the positive fallback strings instead of penalties
     positives = fundamentals.get("positive", [])
@@ -164,7 +166,7 @@ def test_calculate_asset_grade_crypto():
         "maxSupply": 21000000 # > 90% is bullish
     }
     
-    grade, sentiment, fundamentals = calculate_asset_grade({}, {}, 0, info, False)
+    fundamentals = calculate_asset_grade({}, {}, 0, info, False)[2]
     positives = fundamentals.get("positive", [])
     assert any("Network is highly active" in item for item in positives)
     assert any("Almost fully mined" in item for item in positives)
@@ -175,7 +177,7 @@ def test_calculate_asset_grade_crypto_bearish():
         "quoteType": "CRYPTOCURRENCY",
         "volume24HrMarketCapPercent": 0.005,  # < 0.01 is bearish
     }
-    grade, sentiment, fundamentals = calculate_asset_grade({}, {}, 0, info, False)
+    fundamentals = calculate_asset_grade({}, {}, 0, info, False)[2]
     negatives = fundamentals.get("negative", [])
     assert any("Network is stagnant" in item for item in negatives)
 
@@ -187,7 +189,7 @@ def test_calculate_asset_grade_commodity():
         "openInterest": 150000
     }
     
-    grade, sentiment, fundamentals = calculate_asset_grade({}, {}, 0, info, False)
+    fundamentals = calculate_asset_grade({}, {}, 0, info, False)[2]
     positives = fundamentals.get("positive", [])
     assert any("High institutional backing" in item for item in positives)
     assert any("safe-haven" in item for item in positives)
@@ -198,7 +200,7 @@ def test_calculate_asset_grade_commodity_bearish():
         "quoteType": "FUTURE",
         "openInterest": 5000
     }
-    grade, sentiment, fundamentals = calculate_asset_grade({}, {}, 0, info, False)
+    fundamentals = calculate_asset_grade({}, {}, 0, info, False)[2]
     negatives = fundamentals.get("negative", [])
     assert any("Low institutional backing" in item for item in negatives)
 
@@ -210,7 +212,7 @@ def test_calculate_asset_grade_etf_advanced():
         "fiveYearAverageReturn": 0.15 # > 10%
     }
     
-    grade, sentiment, fundamentals = calculate_asset_grade({}, {}, 0, info, True)
+    fundamentals = calculate_asset_grade({}, {}, 0, info, True)[2]
     positives = fundamentals.get("positive", [])
     assert any("Ultra-low management fees" in item for item in positives)
     assert any("Strong 5-year track record" in item for item in positives)
@@ -223,7 +225,7 @@ def test_calculate_asset_grade_etf_advanced_bearish():
         "fiveYearAverageReturn": -0.05 # < 0%
     }
     
-    grade, sentiment, fundamentals = calculate_asset_grade({}, {}, 0, info, True)
+    fundamentals = calculate_asset_grade({}, {}, 0, info, True)[2]
     negatives = fundamentals.get("negative", [])
     assert any("Expensive management fees" in item for item in negatives)
     assert any("Poor 5-year track record" in item for item in negatives)

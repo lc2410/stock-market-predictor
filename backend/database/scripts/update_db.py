@@ -74,7 +74,7 @@ def _download_ticker_history(tickers, conn):
                     chunk_data.columns = pd.MultiIndex.from_product([[chunk[0]], chunk_data.columns])
                 all_data.append(chunk_data)
         except Exception as e:
-            logger.error(f"Error downloading chunk {chunk_num}: {e}")
+            logger.exception(f"Error downloading chunk {chunk_num}: {e}")
         
         time.sleep(RATE_LIMIT_DELAY)
     
@@ -100,7 +100,7 @@ def _download_ticker_history(tickers, conn):
                             data = data.drop(columns=[t], level=0)
                         data = pd.concat([data, t_data], axis=1)
                 except Exception as e:
-                    logger.error(f"Failed to retry {t}: {e}")
+                    logger.exception(f"Failed to retry {t}: {e}")
                 time.sleep(1)
         
         logger.info("Structuring data for SQL...")
@@ -123,6 +123,39 @@ def _download_ticker_history(tickers, conn):
         logger.info("Writing historical prices to SQLite...")
         df_stacked.to_sql('ticker_prices', conn, if_exists='replace', index=False)
 
+def _insert_benchmark_prices(conn, benchmark):
+    dates = benchmark.get("dates", [])
+    closes = benchmark.get("history", [])
+    opens = benchmark.get("open", [])
+    highs = benchmark.get("high", [])
+    lows = benchmark.get("low", [])
+    volumes = benchmark.get("volume", [])
+    
+    for idx in range(len(dates)):
+        conn.execute(INSERT_BENCHMARK_PRICE, (
+            dates[idx],
+            benchmark["benchmark_symbol"],
+            closes[idx] if idx < len(closes) else 0,
+            opens[idx] if idx < len(opens) else 0,
+            highs[idx] if idx < len(highs) else 0,
+            lows[idx] if idx < len(lows) else 0,
+            volumes[idx] if idx < len(volumes) else 0
+        ))
+
+def _insert_benchmark_constituents(conn, benchmark):
+    for constituent in benchmark["tickers"]:
+        conn.execute(INSERT_TICKER, (
+            constituent["ticker_symbol"],
+            constituent.get("company_name"),
+            constituent.get("sector"),
+            constituent.get("market_cap")
+        ))
+        conn.execute(INSERT_BENCHMARK_TICKER, (
+            benchmark["benchmark_symbol"],
+            constituent["ticker_symbol"],
+            constituent.get("weight")
+        ))
+
 def _write_benchmarks(benchmarks, conn):
     """Writes normalized benchmark data (indices, constituents, prices) to SQLite."""
     conn.execute(DELETE_ALL_BENCHMARK_TICKERS)
@@ -138,36 +171,8 @@ def _write_benchmarks(benchmarks, conn):
             benchmark.get("change_pct")
         ))
         
-        dates = benchmark.get("dates", [])
-        closes = benchmark.get("history", [])
-        opens = benchmark.get("open", [])
-        highs = benchmark.get("high", [])
-        lows = benchmark.get("low", [])
-        volumes = benchmark.get("volume", [])
-        
-        for idx in range(len(dates)):
-            conn.execute(INSERT_BENCHMARK_PRICE, (
-                dates[idx],
-                benchmark["benchmark_symbol"],
-                closes[idx] if idx < len(closes) else 0,
-                opens[idx] if idx < len(opens) else 0,
-                highs[idx] if idx < len(highs) else 0,
-                lows[idx] if idx < len(lows) else 0,
-                volumes[idx] if idx < len(volumes) else 0
-            ))
-        
-        for constituent in benchmark["tickers"]:
-            conn.execute(INSERT_TICKER, (
-                constituent["ticker_symbol"],
-                constituent.get("company_name"),
-                constituent.get("sector"),
-                constituent.get("market_cap")
-            ))
-            conn.execute(INSERT_BENCHMARK_TICKER, (
-                benchmark["benchmark_symbol"],
-                constituent["ticker_symbol"],
-                constituent.get("weight")
-            ))
+        _insert_benchmark_prices(conn, benchmark)
+        _insert_benchmark_constituents(conn, benchmark)
 
 def _write_headlines(conn):
     """Fetches and writes news headlines to SQLite."""

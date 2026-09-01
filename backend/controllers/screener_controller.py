@@ -15,5 +15,5 @@ def screener():
         data = get_screener_dashboard_data()
         return jsonify(data)
     except Exception as e:
-        logger.error(f"Error serving screener data: {e}", exc_info=True)
+        logger.exception(f"Error serving screener data: {e}")
         return jsonify({"error": "An internal server error occurred while fetching screener data."}), 500

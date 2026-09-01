@@ -1,7 +1,12 @@
-import pytest
+from unittest.mock import patch
+
 import pandas as pd
-from unittest.mock import patch, MagicMock
-from services.screener_service import process_custom_scans_by_benchmark, get_screener_dashboard_data
+
+from services.screener_service import (
+    get_screener_dashboard_data,
+    process_custom_scans_by_benchmark,
+)
+
 
 def test_process_custom_scans_by_benchmark():
     # Construct a MultiIndex dataframe like yfinance returns for multiple tickers

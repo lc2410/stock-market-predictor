@@ -1,6 +1,5 @@
-import os
-from unittest.mock import patch
 from app import app
+
 
 def test_app_initialization():
     """Test that the Flask app initializes correctly."""

@@ -1,10 +1,16 @@
 """Tests for the forecasting model utility functions."""
-import pandas as pd
-import numpy as np
 from unittest.mock import MagicMock, patch
+
+import numpy as np
+import pandas as pd
+from sklearn.ensemble import (
+    HistGradientBoostingClassifier,
+    HistGradientBoostingRegressor,
+)
+
 from utils.ml_model_utils import extract_quantiles_metrics
-from utils.service_utils import fetch_data, get_chart_data, generate_future_chart_data
-from sklearn.ensemble import HistGradientBoostingRegressor, HistGradientBoostingClassifier
+from utils.service_utils import fetch_data, generate_future_chart_data, get_chart_data
+
 
 def test_extract_quantiles_metrics():
     """Tests that quantile metrics extraction produces valid direction and bounds."""
@@ -81,7 +87,7 @@ def test_fetch_data_insufficient(mock_ticker):
     mock_instance.history.return_value = pd.DataFrame({"Close": [100.0, 101.0], "Dividends": [0.0, 0.0]}, index=pd.date_range("2020-01-01", periods=2))
     mock_ticker.return_value = mock_instance
     
-    price, div = fetch_data("TINY", 1260)
+    price = fetch_data("TINY", 1260)[0]
     # Will hit the len(data) < expected_days break, but len(data) == 2 so it returns the data for downstream handling
     assert price is not None
     assert len(price) == 2
@@ -93,7 +99,7 @@ def test_fetch_data_one_row(mock_ticker):
     mock_instance.history.return_value = pd.DataFrame({"Close": [100.0], "Dividends": [0.0]}, index=pd.date_range("2020-01-01", periods=1))
     mock_ticker.return_value = mock_instance
     
-    price, div = fetch_data("ONE", 1260)
+    price = fetch_data("ONE", 1260)[0]
     # Will hit len(data) < 2
     assert price is None
 

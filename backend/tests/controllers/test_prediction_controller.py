@@ -1,11 +1,14 @@
 """Tests for the prediction controller endpoints and service utilities."""
-import pytest
-import pandas as pd
-import numpy as np
 import json
 from unittest.mock import patch
+
+import numpy as np
+import pandas as pd
+import pytest
+
 from app import app
-from services.prediction_service import sanitize_for_json, build_frontend_payload
+from services.prediction_service import build_frontend_payload, sanitize_for_json
+
 
 @pytest.fixture
 def client():

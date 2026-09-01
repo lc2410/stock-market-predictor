@@ -1,8 +1,11 @@
 """Tests for the search controller endpoint."""
+from unittest.mock import MagicMock, patch
+
 import pytest
 import requests
-from unittest.mock import patch, MagicMock
+
 from app import app
+
 
 @pytest.fixture
 def client():

@@ -29,7 +29,7 @@ export default function TopHeadlines({ headlines, onNewsClick }) {
         <div className="headlines-content">
           {headlines &&
             headlines.map((news, idx) => (
-              <div
+              <button
                 key={idx}
                 className="headline-item"
                 onClick={() => onNewsClick(news)}
@@ -39,8 +39,6 @@ export default function TopHeadlines({ headlines, onNewsClick }) {
                     onNewsClick(news);
                   }
                 }}
-                tabIndex={0}
-                role="button"
               >
                 <div className="headline-publisher">{news.publisher}</div>
                 <a
@@ -62,7 +60,7 @@ export default function TopHeadlines({ headlines, onNewsClick }) {
                       })
                     : ""}
                 </div>
-              </div>
+              </button>
             ))}
           {(!headlines || headlines.length === 0) && (
             <div className="no-data">No headlines available</div>

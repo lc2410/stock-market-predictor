@@ -1,10 +1,12 @@
 """Tests for the dividend forecasting module."""
 import pandas as pd
+
 from ml_models.dividend_forecasting import (
     _engineer_div_features,
     _train_multi_horizon_div,
-    run_dividend_prediction
+    run_dividend_prediction,
 )
+
 
 def test_engineer_div_features_success(dummy_stock_data):
     """Tests that dividend features are correctly engineered from valid stock data."""
@@ -25,9 +27,9 @@ def test_engineer_div_features_no_dividends(dummy_stock_data):
 def test_train_multi_horizon_div(dummy_stock_data):
     """Tests that multi-horizon dividend training produces valid forecasts."""
     anchor_date = dummy_stock_data.index[-1]
-    divs, div_predictors, next_div_date = _engineer_div_features(dummy_stock_data, anchor_date)
+    divs, div_predictors = _engineer_div_features(dummy_stock_data, anchor_date)[:2]
     
-    res, _, _, _, _, _ = _train_multi_horizon_div(divs, div_predictors, div_window=25)
+    res = _train_multi_horizon_div(divs, div_predictors, div_window=25)[0]
     
     assert "Next_Payout" in res
     assert "Payout_4" in res
@@ -39,7 +41,7 @@ def test_train_multi_horizon_div_insufficient_data(dummy_stock_data):
     """Tests that insufficient data triggers the ML fallback with empty results."""
     # Pass a tiny dataset to trigger ML fallback
     anchor_date = dummy_stock_data.index[-1]
-    divs, div_predictors, _ = _engineer_div_features(dummy_stock_data.iloc[-10:], anchor_date)
+    _engineer_div_features(dummy_stock_data.iloc[-10:], anchor_date)
     # divs could be None if no dividends, so manually create one
     tiny_divs = pd.DataFrame({"Dividends": [1.0, 1.1]}, index=pd.date_range("2020-01-01", periods=2))
     tiny_divs["Price_Return_252"] = 0.05
@@ -47,7 +49,9 @@ def test_train_multi_horizon_div_insufficient_data(dummy_stock_data):
     tiny_divs["Div_Growth_1"] = 0.1
     tiny_divs["Yield_On_Cost"] = 0.05
     
-    res, _, _, _, t_dates, _ = _train_multi_horizon_div(tiny_divs, ["Price_Return_252"], div_window=2)
+    res_tuple = _train_multi_horizon_div(tiny_divs, ["Price_Return_252"], div_window=2)
+    res = res_tuple[0]
+    t_dates = res_tuple[4]
     assert res == {}
     assert len(t_dates) == 0
 
@@ -84,8 +88,8 @@ def test_train_multi_horizon_div_future_dates(dummy_stock_data):
     # Pass a tiny div_window and mock the fit loop so we index out of bounds on the historical data
     # This triggers the `else` condition on line 84: test_fit_dates.append(...) using avg_days
     anchor_date = dummy_stock_data.index[-1]
-    divs, div_predictors, _ = _engineer_div_features(dummy_stock_data, anchor_date)
+    divs, div_predictors = _engineer_div_features(dummy_stock_data, anchor_date)[:2]
     # Give it exactly 10 rows so it passes the ML length check but runs out of future dates quickly
-    res, _, _, _, t_dates, _ = _train_multi_horizon_div(divs.iloc[-15:], div_predictors, div_window=15)
+    t_dates = _train_multi_horizon_div(divs.iloc[-15:], div_predictors, div_window=15)[4]
     assert len(t_dates) > 0
 

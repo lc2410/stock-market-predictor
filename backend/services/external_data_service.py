@@ -11,10 +11,13 @@ import time
 
 logger = logging.getLogger(__name__)
 
-
+DOW_30 = "Dow 30"
+NASDAQ_100 = "Nasdaq 100"
+SP_500 = "S&P 500"
+RUSSELL_1000 = "Russell 1000"
 def fetch_benchmark_tickers():
     """Scrapes Wikipedia to build ticker lists for major US benchmark indices."""
-    benchmark_tickers = {"Dow 30": [], "Nasdaq 100": [], "S&P 500": [], "Russell 1000": []}
+    benchmark_tickers = {DOW_30: [], NASDAQ_100: [], SP_500: [], RUSSELL_1000: []}
     
     # Robust "Fuzzy" Wikipedia Scraper
     def get_tickers_from_wiki(url):
@@ -45,24 +48,24 @@ def fetch_benchmark_tickers():
                     
                 return [{"ticker_symbol": str(symbol).replace('.', '-'), "sector": str(sector).strip()} for symbol, sector in zip(symbols, sectors)]
         except Exception as e:
-            logger.error(f"Scraping error {url}: {e}")
+            logger.exception(f"Scraping error {url}: {e}")
         return []
 
     logger.info("Using fuzzy Wikipedia scraper for all benchmarks...")
-    benchmark_tickers["S&P 500"] = get_tickers_from_wiki('https://en.wikipedia.org/wiki/List_of_S%26P_500_companies')
-    benchmark_tickers["Dow 30"] = get_tickers_from_wiki('https://en.wikipedia.org/wiki/List_of_Dow_Jones_Industrial_Average_companies')
-    benchmark_tickers["Nasdaq 100"] = get_tickers_from_wiki('https://en.wikipedia.org/wiki/List_of_NASDAQ-100_companies')
-    benchmark_tickers["Russell 1000"] = get_tickers_from_wiki('https://en.wikipedia.org/wiki/List_of_Russell_1000_companies')
+    benchmark_tickers[SP_500] = get_tickers_from_wiki('https://en.wikipedia.org/wiki/List_of_S%26P_500_companies')
+    benchmark_tickers[DOW_30] = get_tickers_from_wiki('https://en.wikipedia.org/wiki/List_of_Dow_Jones_Industrial_Average_companies')
+    benchmark_tickers[NASDAQ_100] = get_tickers_from_wiki('https://en.wikipedia.org/wiki/List_of_NASDAQ-100_companies')
+    benchmark_tickers[RUSSELL_1000] = get_tickers_from_wiki('https://en.wikipedia.org/wiki/List_of_Russell_1000_companies')
         
     return benchmark_tickers
 
 def fetch_benchmarks():
     """Fetches benchmark indices history and ticker data."""
     benchmarks = {
-        "^DJI": "Dow 30",
-        "^IXIC": "Nasdaq 100",
-        "^GSPC": "S&P 500",
-        "^RUI": "Russell 1000"
+        "^DJI": DOW_30,
+        "^IXIC": NASDAQ_100,
+        "^GSPC": SP_500,
+        "^RUI": RUSSELL_1000
     }
     results = []
     try:
@@ -90,7 +93,7 @@ def fetch_benchmarks():
                 crumb_res = session.get("https://query1.finance.yahoo.com/v1/test/getcrumb", timeout=5)
                 crumb = crumb_res.text
             except Exception as e:
-                logger.error(f"Failed to get crumb: {e}")
+                logger.exception(f"Failed to get crumb: {e}")
                 crumb = ""
             
             for i in range(0, len(all_tickers), 100):
@@ -109,7 +112,7 @@ def fetch_benchmarks():
                                     "price": result_item.get('regularMarketPrice', 0)
                                 }
                 except Exception as e:
-                    logger.error(f"Quote fetch error: {e}")
+                    logger.exception(f"Quote fetch error: {e}")
                 
                 time.sleep(1)  # Delay between custom quote chunks
             
@@ -192,7 +195,7 @@ def fetch_benchmarks():
                 "tickers": current_benchmark_tickers
             })
     except Exception as e:
-        logger.error(f"Error fetching benchmarks: {e}")
+        logger.exception(f"Error fetching benchmarks: {e}")
     return results
 
 def fetch_headlines():
@@ -236,5 +239,5 @@ def fetch_headlines():
             
         return final_headlines
     except Exception as e:
-        logger.error(f"Error fetching headlines: {e}")
+        logger.exception(f"Error fetching headlines: {e}")
         return []

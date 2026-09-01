@@ -1,7 +1,8 @@
 """Shared pytest fixtures for backend tests."""
-import pytest
-import pandas as pd
 import numpy as np
+import pandas as pd
+import pytest
+
 
 @pytest.fixture
 def dummy_stock_data():

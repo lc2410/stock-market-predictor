@@ -1,14 +1,15 @@
-import pytest
+from unittest.mock import MagicMock, patch
+
 import pandas as pd
-from unittest.mock import patch, MagicMock
-from datetime import datetime
+
 from services.prediction_service import (
-    sanitize_for_json,
     build_frontend_payload,
     fetch_company_fundamentals,
     resolve_search_query,
-    run_prediction_pipeline
+    run_prediction_pipeline,
+    sanitize_for_json,
 )
+
 
 def test_sanitize_for_json():
     obj = {
@@ -83,7 +84,7 @@ def test_fetch_company_fundamentals(mock_ticker):
     mock_instance.funds_data = mock_funds
     mock_ticker.return_value = mock_instance
     
-    info, is_fund, is_crypto, holdings, sectors = fetch_company_fundamentals("SPY")
+    is_fund, is_crypto, holdings, sectors = fetch_company_fundamentals("SPY")[1:5]
     assert is_fund is True
     assert is_crypto is False
     assert len(holdings) == 2

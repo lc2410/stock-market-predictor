@@ -24,7 +24,7 @@ def predict(ticker):
                 return jsonify({"error": update["error"]}), 404
                 
     except Exception as e:
-        logger.error(f"Error for ticker {safe_ticker}: {e}", exc_info=True)
+        logger.exception(f"Error for ticker {safe_ticker}: {e}")
         return jsonify({"error": "An internal server error occurred."}), 500
 
 @prediction_bp.route('/predict_stream/<string:ticker>', methods=['GET'])
@@ -39,7 +39,7 @@ def predict_stream(ticker):
                 yield f"data: {json.dumps(update)}\n\n"
 
         except Exception as e:
-            logger.error(f"Streaming error for ticker {safe_ticker}: {e}", exc_info=True)
+            logger.exception(f"Streaming error for ticker {safe_ticker}: {e}")
             yield f"data: {json.dumps({'status': 'error', 'error': 'An internal server error occurred.'})}\n\n"
 
     headers = {

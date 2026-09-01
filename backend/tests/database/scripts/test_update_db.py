@@ -1,20 +1,20 @@
-import pytest
-import pandas as pd
-from unittest.mock import patch, MagicMock, call
-import sys
 import os
+import sys
+from unittest.mock import MagicMock, patch
+
+import pandas as pd
 
 # Ensure backend is in path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 
 from database.scripts.update_db import (
-    get_retry_session,
     _download_ticker_history,
     _write_benchmarks,
     _write_headlines,
+    get_retry_session,
     update_database,
-    CHUNK_SIZE
 )
+
 
 def test_get_retry_session():
     session = get_retry_session()
@@ -24,9 +24,9 @@ def test_get_retry_session():
     assert 'http://' in session.adapters
 
 @patch('database.scripts.update_db.yf.download')
-@patch('database.scripts.update_db.time.sleep')
-@patch('database.scripts.update_db.get_retry_session')
-def test_download_ticker_history(mock_session, mock_sleep, mock_download):
+@patch('database.scripts.update_db.time.sleep', MagicMock())
+@patch('database.scripts.update_db.get_retry_session', MagicMock())
+def test_download_ticker_history(mock_download):
     mock_conn = MagicMock()
     
     # Test with empty chunk data
@@ -56,12 +56,12 @@ def test_download_ticker_history(mock_session, mock_sleep, mock_download):
     with patch.object(pd.DataFrame, 'to_sql') as mock_to_sql:
         _download_ticker_history(['AAPL'], mock_conn)
         mock_to_sql.assert_called_once()
-        args, kwargs = mock_to_sql.call_args
+        args, _kwargs = mock_to_sql.call_args
         assert args[0] == 'ticker_prices'
 
 @patch('database.scripts.update_db.yf.download')
-@patch('database.scripts.update_db.time.sleep')
-def test_download_ticker_history_exception(mock_sleep, mock_download):
+@patch('database.scripts.update_db.time.sleep', MagicMock())
+def test_download_ticker_history_exception(mock_download):
     mock_conn = MagicMock()
     mock_download.side_effect = Exception("Download failed")
     # Should handle gracefully and not crash
@@ -139,3 +139,115 @@ def test_update_database(mock_write_head, mock_write_bench, mock_down, mock_fetc
     mock_write_head.assert_called_once()
     mock_conn.commit.assert_called_once()
     mock_conn.close.assert_called_once()
+
+@patch('database.scripts.update_db.yf.download')
+@patch('database.scripts.update_db.time.sleep', MagicMock())
+def test_download_ticker_history_missing(mock_download):
+    mock_conn = MagicMock()
+    dates = pd.date_range("2023-01-01", periods=2, freq="D")
+    
+    # First call to download returns df with missing AAPL data (NaNs)
+    df1 = pd.DataFrame({
+        "Close": [float('nan'), float('nan')],
+        "Open": [149, 150],
+        "High": [155, 156],
+        "Low": [145, 146],
+        "Volume": [100, 200],
+        "Dividends": [0, 0],
+        "Stock Splits": [0, 0]
+    }, index=dates)
+    df1.columns = pd.MultiIndex.from_product([['AAPL'], df1.columns])
+
+    # Second call (retry) returns valid data
+    df2 = pd.DataFrame({
+        "Close": [150, 151],
+        "Open": [149, 150],
+        "High": [155, 156],
+        "Low": [145, 146],
+        "Volume": [100, 200],
+        "Dividends": [0, 0],
+        "Stock Splits": [0, 0]
+    }, index=dates)
+    df2.columns = pd.MultiIndex.from_product([['AAPL'], df2.columns])
+
+    mock_download.side_effect = [df1, df2]
+
+    with patch.object(pd.DataFrame, 'to_sql') as mock_to_sql:
+        _download_ticker_history(['AAPL'], mock_conn)
+        mock_to_sql.assert_called_once()
+        assert mock_download.call_count == 2
+
+@patch('database.scripts.update_db.yf.download')
+@patch('database.scripts.update_db.time.sleep', MagicMock())
+def test_download_ticker_history_missing_retry_exception(mock_download):
+    mock_conn = MagicMock()
+    dates = pd.date_range("2023-01-01", periods=2, freq="D")
+    
+    df1 = pd.DataFrame({
+        "Close": [float('nan'), float('nan')],
+        "Open": [149, 150],
+        "High": [155, 156],
+        "Low": [145, 146],
+        "Volume": [100, 200],
+        "Dividends": [0, 0],
+        "Stock Splits": [0, 0]
+    }, index=dates)
+    df1.columns = pd.MultiIndex.from_product([['AAPL'], df1.columns])
+
+    # Retry fails with an exception
+    mock_download.side_effect = [df1, Exception("Retry failed")]
+
+    with patch.object(pd.DataFrame, 'to_sql') as mock_to_sql:
+        _download_ticker_history(['AAPL'], mock_conn)
+        mock_to_sql.assert_called_once()
+        assert mock_download.call_count == 2
+
+@patch('database.scripts.update_db.yf.download')
+@patch('database.scripts.update_db.time.sleep', MagicMock())
+def test_download_ticker_history_flat_index(mock_download):
+    mock_conn = MagicMock()
+    dates = pd.date_range("2023-01-01", periods=2, freq="D")
+    
+    # First call returns df without multiindex
+    df1 = pd.DataFrame({
+        "Close": [150, 151],
+        "Open": [149, 150],
+        "High": [155, 156],
+        "Low": [145, 146],
+        "Volume": [100, 200],
+        "Dividends": [0, 0],
+        "Stock Splits": [0, 0]
+    }, index=dates)
+
+    mock_download.return_value = df1
+
+    with patch.object(pd.DataFrame, 'to_sql') as mock_to_sql:
+        _download_ticker_history(['AAPL'], mock_conn)
+        mock_to_sql.assert_called_once()
+
+def test_write_benchmarks_missing_fields():
+    mock_conn = MagicMock()
+    
+    benchmarks = [{
+        "benchmark_symbol": "SPY",
+        "benchmark_name": "SPDR S&P 500",
+        "tickers": [{
+            "ticker_symbol": "AAPL",
+        }]
+    }]
+    
+    _write_benchmarks(benchmarks, mock_conn)
+    assert mock_conn.execute.call_count > 4
+
+@patch('database.scripts.update_db.sqlite3.connect', MagicMock())
+@patch('database.scripts.update_db.os.listdir', MagicMock(return_value=[]))
+@patch('database.scripts.update_db.fetch_benchmarks')
+@patch('database.scripts.update_db._download_ticker_history', MagicMock())
+@patch('database.scripts.update_db._write_benchmarks', MagicMock())
+@patch('database.scripts.update_db._write_headlines', MagicMock())
+def test_update_database_empty_tickers(mock_fetch_bench):
+    mock_fetch_bench.return_value = []
+    
+    with patch('database.scripts.update_db._download_ticker_history') as mock_down:
+        update_database()
+        mock_down.assert_not_called()

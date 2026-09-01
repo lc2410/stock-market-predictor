@@ -1,20 +1,22 @@
-import pytest
+from datetime import datetime
+from unittest.mock import MagicMock, patch
+
 import pandas as pd
-import numpy as np
-from datetime import datetime, timedelta
+import pytest
+
 from utils.service_utils import (
-    calculate_change_pct,
-    calculate_volatility,
     calculate_52_week_high_low,
     calculate_52_week_return,
     calculate_average_volume,
-    calculate_ttm_dividend_yield,
+    calculate_change_pct,
     calculate_rsi,
-    get_chart_data,
+    calculate_ttm_dividend_yield,
+    calculate_volatility,
     fetch_data,
-    generate_future_chart_data
+    generate_future_chart_data,
+    get_chart_data,
 )
-from unittest.mock import patch, MagicMock
+
 
 def test_calculate_change_pct():
     assert calculate_change_pct(110, 100) == 10.0
@@ -119,7 +121,7 @@ def test_generate_future_chart_data():
     assert res == ([], [], [], [])
     
     res = generate_future_chart_data(anchors, lower, upper, anchor_date, True, False)
-    dates, prices, ups, lows = res
+    dates, prices = res[:2]
     assert len(dates) == 365
     assert len(prices) == 365
     assert prices[0] == 100.0

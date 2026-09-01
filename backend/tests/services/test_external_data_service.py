@@ -1,11 +1,13 @@
-import pytest
+from unittest.mock import MagicMock, patch
+
 import pandas as pd
-from unittest.mock import patch, MagicMock
+
 from services.external_data_service import (
     fetch_benchmark_tickers,
     fetch_benchmarks,
-    fetch_headlines
+    fetch_headlines,
 )
+
 
 @patch('services.external_data_service.requests.get')
 def test_fetch_benchmark_tickers(mock_get):

@@ -23,5 +23,5 @@ def search(query):
         ]
         return jsonify(results)
     except Exception as e:
-        logger.error(f"Search API error: {e}")
+        logger.exception(f"Search API error: {e}")
         return jsonify([])

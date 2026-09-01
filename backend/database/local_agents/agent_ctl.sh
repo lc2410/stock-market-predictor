@@ -81,7 +81,7 @@ EOF
         ;;
 
     logs)
-        if [ ! -f "$LOG_FILE" ]; then
+        if [[ ! -f "$LOG_FILE" ]]; then
             echo "⚠️  No log file found yet. Run the agent first."
             exit 1
         fi

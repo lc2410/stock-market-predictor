@@ -24,20 +24,18 @@ export default function ScreenerTable({
       cellClassName: `symbol-cell ${orderBy === "symbol" ? "sorted-column" : ""}`,
       headerClassName: orderBy === "symbol" ? "sorted-header" : "",
       render: (row) => (
-        <span
+        <button
           className="symbol-ticker clickable"
-          onClick={() => onTickerSearch && onTickerSearch(row.symbol)}
+          onClick={() => onTickerSearch?.(row.symbol)}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") {
               e.preventDefault();
-              onTickerSearch && onTickerSearch(row.symbol);
+              onTickerSearch?.(row.symbol);
             }
           }}
-          tabIndex={0}
-          role="button"
         >
           {row.name ? `${row.name} (${row.symbol})` : row.symbol}
-        </span>
+        </button>
       ),
     },
   ];

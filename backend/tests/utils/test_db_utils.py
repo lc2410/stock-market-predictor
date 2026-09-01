@@ -1,12 +1,15 @@
-import pytest
+from unittest.mock import MagicMock, patch
+
 import pandas as pd
-from unittest.mock import patch, MagicMock
+import pytest
+
 from utils.db_utils import (
     get_db_connection,
+    get_historical_prices_df,
     get_latest_benchmarks,
     get_latest_headlines,
-    get_historical_prices_df
 )
+
 
 @patch('utils.db_utils.os.path.exists')
 @patch('utils.db_utils.sqlite3.connect')
@@ -34,7 +37,7 @@ def test_get_latest_benchmarks(mock_get_conn):
     # 2. SELECT_BENCHMARK_PRICES for first benchmark
     # 3. SELECT_BENCHMARK_CONSTITUENTS for first benchmark
     
-    def side_effect(query, params=()):
+    def side_effect(query, *args):
         if 'SELECT * FROM benchmarks' in query:
             mock_cursor.fetchall.return_value = [('SPY', 'SPDR S&P 500', 400.0, 1.5)]
         elif 'benchmark_prices' in query:
