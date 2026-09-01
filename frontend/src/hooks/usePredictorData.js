@@ -70,6 +70,11 @@ export default function usePredictorData() {
       return;
     }
 
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+
     clearPrediction();
     setIsLoading(true);
     setIsLoaderVisible(true);
@@ -84,6 +89,7 @@ export default function usePredictorData() {
       eventSourceRef.current = eventSource;
 
       eventSource.onmessage = (e) => {
+        if (eventSource !== eventSourceRef.current) return;
         const data = JSON.parse(e.data);
 
         if (data.status === 'error') {
@@ -142,6 +148,7 @@ export default function usePredictorData() {
       };
 
       eventSource.onerror = () => {
+        if (eventSource !== eventSourceRef.current) return;
         eventSource.close();
         eventSourceRef.current = null;
         clearInterval(timerIntervalRef.current);

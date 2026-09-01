@@ -7,7 +7,12 @@ Chart.register(...registerables, TreemapController, TreemapElement);
 
 const getSymFromCtx = (raw) => {
   if (!raw) return null;
-  return raw.g || (raw._data && Array.isArray(raw._data) ? raw._data[0].symbol : (raw._data ? raw._data.symbol : null));
+  if (raw.g) return raw.g;
+  if (raw._data) {
+    if (Array.isArray(raw._data)) return raw._data[0].symbol;
+    return raw._data.symbol;
+  }
+  return null;
 };
 
 const getBlockColorFn = (theme, groupBySector, symbolMap) => (ctx) => {
@@ -39,13 +44,13 @@ const getBlockColorFn = (theme, groupBySector, symbolMap) => (ctx) => {
 };
 
 const getLabelsFormatterFn = (symbolMap) => (ctx) => {
-  if (!ctx.raw) return "";
+  if (!ctx.raw) return [];
   if (ctx.raw.w !== undefined && ctx.raw.h !== undefined) {
-    if (ctx.raw.w < 18 || ctx.raw.h < 12) return "";
+    if (ctx.raw.w < 18 || ctx.raw.h < 12) return [];
   }
   const sym = getSymFromCtx(ctx.raw);
   const dataObj = symbolMap[sym];
-  if (!dataObj) return "";
+  if (!dataObj) return [];
   const lines = [dataObj.symbol];
   if (ctx.raw.h !== undefined && ctx.raw.h < 28) {
     return lines;
@@ -146,7 +151,7 @@ export default function HeatmapChart({
           callbacks: {
             title: () => "",
             label: (item) => {
-              if (!item.raw) return "";
+              if (!item.raw) return [];
 
               if (groupBySector && item.raw.l === 0) {
                 const sectorName = item.raw.g || "Unknown Sector";
@@ -162,15 +167,9 @@ export default function HeatmapChart({
                 ];
               }
 
-              const sym =
-                item.raw.g ||
-                (item.raw._data && Array.isArray(item.raw._data)
-                  ? item.raw._data[0].symbol
-                  : item.raw._data
-                    ? item.raw._data.symbol
-                    : null);
+              const sym = getSymFromCtx(item.raw);
               const dataObj = symbolMap[sym];
-              if (!dataObj || dataObj.change === undefined) return "";
+              if (!dataObj || dataObj.change === undefined) return [];
 
               let mcapStr = "N/A";
               if (dataObj.marketCap) {

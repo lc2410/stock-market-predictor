@@ -60,8 +60,8 @@ export default function NewsModal({ article, onClose }) {
         <div className="modal-body">
           {article.summary ? (
             <p id="modalSummary">
-              {article.summary.replace(/\s*\[?(\.\.\.|…)\]?\s*$/, "")}
-              {article.summary.match(/\s*\[?(\.\.\.|…)\]?\s*$/) && (
+              {article.summary.replace(/\[?(?:\.\.\.|…)\]?\s*$/, "").trimEnd()}
+              {article.summary.match(/\[?(?:\.\.\.|…)\]?\s*$/) && (
                 <a
                   href={article.url}
                   target="_blank"

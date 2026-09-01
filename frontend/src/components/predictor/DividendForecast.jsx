@@ -61,6 +61,38 @@ function buildDivRows(data) {
   );
 }
 
+function RecentPayoutSubtitle({ data }) {
+  if (data.Chart_History?.dividend_amounts?.length > 0) {
+    const divs = data.Chart_History.dividend_amounts;
+    const latestDiv = divs[divs.length - 1];
+    let changeEl = null;
+    if (divs.length > 1) {
+      const prevDiv = divs[divs.length - 2];
+      const diff = latestDiv - prevDiv;
+      const pct = prevDiv !== 0 ? (diff / prevDiv) * 100 : 0;
+      const isPos = diff >= 0;
+      const sign = isPos ? "+" : "";
+      changeEl = (
+        <span
+          className={`benchmark-change ${isPos ? "positive" : "negative"}`}
+        >
+          {sign}
+          {pct.toFixed(2)}%
+        </span>
+      );
+    }
+    return (
+      <div className="recent-payout-container">
+        <span>
+          Most Recent Dividend Payout: ${latestDiv.toFixed(2)}
+        </span>
+        {changeEl}
+      </div>
+    );
+  }
+  return "N/A";
+}
+
 // Displays horizon forecast cards, dividend chart, and data table for the predicted asset
 export default function DividendForecast({ data, theme }) {
   const hasDividends =
@@ -112,32 +144,36 @@ export default function DividendForecast({ data, theme }) {
         ]
       : [];
 
+  let topContent;
+  if (!hasDividends) {
+    topContent = <EmptyStateCard message="This publicly traded asset does not currently pay dividends." />;
+  } else if (!f || Object.keys(f).length === 0) {
+    topContent = <EmptyStateCard message="Not enough historical dividend data to generate reliable forecasts." />;
+  } else {
+    topContent = (
+      <div className="dividend-forecast-cards">
+        {horizonConfig.map((c) => (
+          <HorizonCard
+            key={c.title}
+            title={c.title}
+            dateStr={c.dateStr}
+            direction={c.metrics.Direction}
+            dirConf={c.metrics.Direction_Confidence}
+            amtTitle="Forecasted Payout"
+            amt={c.metrics.Amount}
+            amtLower={c.metrics.Amount_Lower}
+            amtUpper={c.metrics.Amount_Upper}
+            dirLabel={dirLabel}
+          />
+        ))}
+      </div>
+    );
+  }
+
   return (
     <>
-      {!hasDividends ? (
-        <EmptyStateCard message="This publicly traded asset does not currently pay dividends." />
-      ) : !f || Object.keys(f).length === 0 ? (
-        <EmptyStateCard message="Not enough historical dividend data to generate reliable forecasts." />
-      ) : (
-        <div className="dividend-forecast-cards">
-          {horizonConfig.map((c, i) => (
-            <HorizonCard
-              key={i}
-              title={c.title}
-              dateStr={c.dateStr}
-              direction={c.metrics.Direction}
-              dirConf={c.metrics.Direction_Confidence}
-              amtTitle="Forecasted Payout"
-              amt={c.metrics.Amount}
-              amtLower={c.metrics.Amount_Lower}
-              amtUpper={c.metrics.Amount_Upper}
-              dirLabel={dirLabel}
-            />
-          ))}
-        </div>
-      )}
+      {topContent}
 
-      {}
       {hasDividends ? (
         <DividendChart data={data} theme={theme} />
       ) : (
@@ -155,37 +191,7 @@ export default function DividendForecast({ data, theme }) {
       {hasDividends && (
         <PredictorTable
           title="Dividend Payout History & Forecast Data with Expected Range"
-          subtitle={(() => {
-            if (data.Chart_History?.dividend_amounts?.length > 0) {
-              const divs = data.Chart_History.dividend_amounts;
-              const latestDiv = divs[divs.length - 1];
-              let changeEl = null;
-              if (divs.length > 1) {
-                const prevDiv = divs[divs.length - 2];
-                const diff = latestDiv - prevDiv;
-                const pct = prevDiv !== 0 ? (diff / prevDiv) * 100 : 0;
-                const isPos = diff >= 0;
-                const sign = isPos ? "+" : "";
-                changeEl = (
-                  <span
-                    className={`benchmark-change ${isPos ? "positive" : "negative"}`}
-                  >
-                    {sign}
-                    {pct.toFixed(2)}%
-                  </span>
-                );
-              }
-              return (
-                <div className="recent-payout-container">
-                  <span>
-                    Most Recent Dividend Payout: ${latestDiv.toFixed(2)}
-                  </span>
-                  {changeEl}
-                </div>
-              );
-            }
-            return "N/A";
-          })()}
+          subtitle={<RecentPayoutSubtitle data={data} />}
           dateHeader="Ex-Dividend Date"
           histHeader="Historical Payout"
           projHeader="Projected Payout"

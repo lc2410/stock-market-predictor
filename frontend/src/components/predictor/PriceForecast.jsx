@@ -101,6 +101,36 @@ function buildViewState(data) {
   };
 }
 
+function RecentPriceSubtitle({ data }) {
+  if (data.Chart_History?.prices?.length > 0) {
+    const prices = data.Chart_History.prices;
+    const latestPrice = prices[prices.length - 1];
+    let changeEl = null;
+    if (prices.length > 1) {
+      const prevPrice = prices[prices.length - 2];
+      const diff = latestPrice - prevPrice;
+      const pct = (diff / prevPrice) * 100;
+      const isPos = diff >= 0;
+      const sign = isPos ? "+" : "";
+      changeEl = (
+        <span
+          className={`benchmark-change ${isPos ? "positive" : "negative"}`}
+        >
+          {sign}
+          {pct.toFixed(2)}%
+        </span>
+      );
+    }
+    return (
+      <div className="recent-price-container">
+        <span>Most Recent Closed Price: ${latestPrice.toFixed(2)}</span>
+        {changeEl}
+      </div>
+    );
+  }
+  return "N/A";
+}
+
 // Displays horizon forecast cards, interactive price chart, and data table for the predicted asset
 export default function PriceForecast({ data, theme }) {
   const [isMobile, setIsMobile] = useState(
@@ -217,9 +247,9 @@ export default function PriceForecast({ data, theme }) {
         <EmptyStateCard message="Not enough closed stock price data to generate reliable forecasts." />
       ) : (
         <div className="price-forecast-cards">
-          {horizonConfig.map((c, i) => (
+          {horizonConfig.map((c) => (
             <HorizonCard
-              key={i}
+              key={c.title}
               title={c.title}
               dateStr={c.dateStr}
               direction={c.metrics.Direction}
@@ -248,35 +278,7 @@ export default function PriceForecast({ data, theme }) {
 
       <PredictorTable
         title="Closed Stock Price History & Forecast Data with Expected Range"
-        subtitle={(() => {
-          if (data.Chart_History?.prices?.length > 0) {
-            const prices = data.Chart_History.prices;
-            const latestPrice = prices[prices.length - 1];
-            let changeEl = null;
-            if (prices.length > 1) {
-              const prevPrice = prices[prices.length - 2];
-              const diff = latestPrice - prevPrice;
-              const pct = (diff / prevPrice) * 100;
-              const isPos = diff >= 0;
-              const sign = isPos ? "+" : "";
-              changeEl = (
-                <span
-                  className={`benchmark-change ${isPos ? "positive" : "negative"}`}
-                >
-                  {sign}
-                  {pct.toFixed(2)}%
-                </span>
-              );
-            }
-            return (
-              <div className="recent-price-container">
-                <span>Most Recent Closed Price: ${latestPrice.toFixed(2)}</span>
-                {changeEl}
-              </div>
-            );
-          }
-          return "N/A";
-        })()}
+        subtitle={<RecentPriceSubtitle data={data} />}
         dateHeader="Trading Date"
         histHeader="Historical Price"
         projHeader="Projected Price"
