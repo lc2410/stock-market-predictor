@@ -59,6 +59,116 @@ def fetch_benchmark_tickers():
         
     return benchmark_tickers
 
+def _fetch_bulk_quotes(all_tickers):
+    quotes = {}
+    if not all_tickers:
+        return quotes
+    
+    logger.info(f"Fetching quotes for {len(all_tickers)} tickers via bulk API...")
+    session = requests.Session()
+    session.headers.update({'User-Agent': 'Mozilla/5.0'})
+    try:
+        session.get("https://fc.yahoo.com", timeout=5)
+        crumb_res = session.get("https://query1.finance.yahoo.com/v1/test/getcrumb", timeout=5)
+        crumb = crumb_res.text
+    except Exception as e:
+        logger.exception(f"Failed to get crumb: {e}")
+        crumb = ""
+    
+    for i in range(0, len(all_tickers), 100):
+        chunk = all_tickers[i:i+100]
+        try:
+            url = f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={','.join(chunk)}&crumb={crumb}"
+            res = session.get(url, timeout=10)
+            if res.status_code == 200:
+                for result_item in res.json().get('quoteResponse', {}).get('result', []):
+                    sym = result_item.get('symbol')
+                    if sym:
+                        quotes[sym] = {
+                            "company_name": result_item.get('shortName') or result_item.get('longName') or sym,
+                            "market_cap": result_item.get('marketCap', 0),
+                            "change": result_item.get('regularMarketChangePercent', 0),
+                            "price": result_item.get('regularMarketPrice', 0)
+                        }
+        except Exception as e:
+            logger.exception(f"Quote fetch error: {e}")
+        time.sleep(1)
+    return quotes
+
+def _fill_missing_mcaps(current_benchmark_tickers, missing_mcap_tickers):
+    if not missing_mcap_tickers:
+        return
+        
+    def fetch_mcap(ticker):
+        try:
+            time.sleep(0.5)
+            return ticker, yf.Ticker(ticker).fast_info['market_cap']
+        except Exception:
+            return ticker, 0
+            
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        mcap_results = dict(executor.map(fetch_mcap, missing_mcap_tickers))
+        
+    for c in current_benchmark_tickers:
+        if not c["market_cap"] and c["ticker_symbol"] in mcap_results:
+            c["market_cap"] = mcap_results[c["ticker_symbol"]]
+
+def _format_benchmark(benchmark_symbol, benchmark_name, data, fetched_benchmark_tickers, quotes):
+    if isinstance(data.columns, pd.MultiIndex):
+        df = data[benchmark_symbol].dropna()
+    else:
+        df = data.dropna()
+    
+    if df.empty:
+        return None
+    
+    prices = df['Close'].tolist()
+    current_price = prices[-1]
+    prev_price = prices[-2] if len(prices) > 1 else current_price
+    
+    current_benchmark_tickers = []
+    missing_mcap_tickers = []
+    
+    if benchmark_name in fetched_benchmark_tickers:
+        for t_obj in fetched_benchmark_tickers[benchmark_name]:
+            c_ticker = t_obj["ticker_symbol"]
+            q_data = quotes.get(c_ticker)
+            if q_data:
+                mcap = q_data.get("market_cap", 0)
+                if not mcap:
+                    missing_mcap_tickers.append(c_ticker)
+                current_benchmark_tickers.append({
+                    "ticker_symbol": c_ticker,
+                    "company_name": q_data.get("company_name", c_ticker),
+                    "change": q_data.get("change", 0),
+                    "market_cap": mcap,
+                    "price": q_data.get("price", 0),
+                    "sector": t_obj["sector"]
+                })
+                
+    _fill_missing_mcaps(current_benchmark_tickers, missing_mcap_tickers)
+            
+    valid_caps = [c["market_cap"] for c in current_benchmark_tickers if c.get("market_cap")]
+    avg_cap = (sum(valid_caps) / len(valid_caps)) if valid_caps else 100_000_000_000
+    total_cap = sum(c["market_cap"] if c.get("market_cap") else avg_cap for c in current_benchmark_tickers)
+    for c in current_benchmark_tickers:
+        mcap = c["market_cap"] if c.get("market_cap") else avg_cap
+        c["weight"] = (mcap / total_cap * 100) if total_cap > 0 else 0
+
+    return {
+        "benchmark_symbol": benchmark_symbol,
+        "benchmark_name": benchmark_name,
+        "current_price": current_price,
+        "change_pct": ((current_price - prev_price) / prev_price) * 100,
+        "history": prices,
+        "dates": df.index.strftime('%Y-%m-%d').tolist(),
+        "open": df['Open'].tolist(),
+        "high": df['High'].tolist(),
+        "low": df['Low'].tolist(),
+        "volume": df['Volume'].tolist(),
+        "tickers": current_benchmark_tickers
+    }
+
 def fetch_benchmarks():
     """Fetches benchmark indices history and ticker data."""
     benchmarks = {
@@ -70,130 +180,20 @@ def fetch_benchmarks():
     results = []
     try:
         end_date = datetime.now() + timedelta(days=1)
-        start_date = end_date - timedelta(days=366) # Ensure we encompass a full year to match tickers
+        start_date = end_date - timedelta(days=366)
         start_str = start_date.strftime('%Y-%m-%d')
         end_str = end_date.strftime('%Y-%m-%d')
         
         data = yf.download(list(benchmarks.keys()), start=start_str, end=end_str, interval="1d", group_by="ticker", progress=False)
         fetched_benchmark_tickers = fetch_benchmark_tickers()
         
-        all_tickers = set()
-        for t_list in fetched_benchmark_tickers.values():
-            for t_obj in t_list:
-                all_tickers.add(t_obj["ticker_symbol"])
-        all_tickers = list(all_tickers)
-        
-        quotes = {}
-        if all_tickers:
-            logger.info(f"Fetching quotes for {len(all_tickers)} tickers via bulk API...")
-            session = requests.Session()
-            session.headers.update({'User-Agent': 'Mozilla/5.0'})
-            try:
-                session.get("https://fc.yahoo.com", timeout=5)
-                crumb_res = session.get("https://query1.finance.yahoo.com/v1/test/getcrumb", timeout=5)
-                crumb = crumb_res.text
-            except Exception as e:
-                logger.exception(f"Failed to get crumb: {e}")
-                crumb = ""
-            
-            for i in range(0, len(all_tickers), 100):
-                chunk = all_tickers[i:i+100]
-                try:
-                    url = f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={','.join(chunk)}&crumb={crumb}"
-                    res = session.get(url, timeout=10)
-                    if res.status_code == 200:
-                        for result_item in res.json().get('quoteResponse', {}).get('result', []):
-                            sym = result_item.get('symbol')
-                            if sym:
-                                quotes[sym] = {
-                                    "company_name": result_item.get('shortName') or result_item.get('longName') or sym,
-                                    "market_cap": result_item.get('marketCap', 0),
-                                    "change": result_item.get('regularMarketChangePercent', 0),
-                                    "price": result_item.get('regularMarketPrice', 0)
-                                }
-                except Exception as e:
-                    logger.exception(f"Quote fetch error: {e}")
-                
-                time.sleep(1)  # Delay between custom quote chunks
+        all_tickers = {t_obj["ticker_symbol"] for t_list in fetched_benchmark_tickers.values() for t_obj in t_list}
+        quotes = _fetch_bulk_quotes(list(all_tickers))
             
         for benchmark_symbol, benchmark_name in benchmarks.items():
-            if isinstance(data.columns, pd.MultiIndex):
-                df = data[benchmark_symbol].dropna()
-            else:
-                df = data.dropna() if len(benchmarks) == 1 else data
-            
-            if df.empty:
-                continue
-            
-            prices = df['Close'].tolist()
-            dates = df.index.strftime('%Y-%m-%d').tolist()
-            opens = df['Open'].tolist()
-            highs = df['High'].tolist()
-            lows = df['Low'].tolist()
-            volumes = df['Volume'].tolist()
-            
-            current_price = prices[-1]
-            prev_price = prices[-2] if len(prices) > 1 else current_price
-            change_pct = ((current_price - prev_price) / prev_price) * 100
-            
-            current_benchmark_tickers = []
-            missing_mcap_tickers = []
-            
-            if benchmark_name in fetched_benchmark_tickers:
-                for t_obj in fetched_benchmark_tickers[benchmark_name]:
-                    c_ticker = t_obj["ticker_symbol"]
-                    c_sector = t_obj["sector"]
-                    
-                    q_data = quotes.get(c_ticker)
-                    if q_data:
-                        mcap = q_data.get("market_cap", 0)
-                        if not mcap:
-                            missing_mcap_tickers.append(c_ticker)
-                            
-                        current_benchmark_tickers.append({
-                            "ticker_symbol": c_ticker,
-                            "company_name": q_data.get("company_name", c_ticker),
-                            "change": q_data.get("change", 0),
-                            "market_cap": mcap,
-                            "price": q_data.get("price", 0),
-                            "sector": c_sector
-                        })
-                        
-            if missing_mcap_tickers:
-                def fetch_mcap(ticker):
-                    try:
-                        time.sleep(0.5)  # small delay to prevent rate limiting
-                        return ticker, yf.Ticker(ticker).fast_info['market_cap']
-                    except Exception:
-                        return ticker, 0
-                        
-                with ThreadPoolExecutor(max_workers=5) as executor:
-                    mcap_results = dict(executor.map(fetch_mcap, missing_mcap_tickers))
-                    
-                for c in current_benchmark_tickers:
-                    if not c["market_cap"] and c["ticker_symbol"] in mcap_results:
-                        c["market_cap"] = mcap_results[c["ticker_symbol"]]
-                        
-            valid_caps = [c["market_cap"] for c in current_benchmark_tickers if c.get("market_cap") is not None and c["market_cap"] > 0]
-            avg_cap = (sum(valid_caps) / len(valid_caps)) if valid_caps else 100_000_000_000
-            total_cap = sum(c["market_cap"] if (c.get("market_cap") is not None and c["market_cap"] > 0) else avg_cap for c in current_benchmark_tickers)
-            for c in current_benchmark_tickers:
-                mcap = c["market_cap"] if (c.get("market_cap") is not None and c["market_cap"] > 0) else avg_cap
-                c["weight"] = (mcap / total_cap * 100) if total_cap > 0 else 0
-
-            results.append({
-                "benchmark_symbol": benchmark_symbol,
-                "benchmark_name": benchmark_name,
-                "current_price": current_price,
-                "change_pct": change_pct,
-                "history": prices,
-                "dates": dates,
-                "open": opens,
-                "high": highs,
-                "low": lows,
-                "volume": volumes,
-                "tickers": current_benchmark_tickers
-            })
+            formatted = _format_benchmark(benchmark_symbol, benchmark_name, data, fetched_benchmark_tickers, quotes)
+            if formatted:
+                results.append(formatted)
     except Exception as e:
         logger.exception(f"Error fetching benchmarks: {e}")
     return results

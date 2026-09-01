@@ -44,12 +44,45 @@ def get_retry_session():
     session.mount('https://', adapter)
     return session
 
+def _retry_missing_tickers(data, missing, start_str, end_str, session):
+    for t in missing:
+        try:
+            t_data = yf.download([t], start=start_str, end=end_str, group_by="ticker", actions=True, progress=False, threads=False, session=session)
+            if not t_data.empty:
+                if isinstance(data.columns, pd.MultiIndex) and t in data.columns.levels[0]:
+                    data = data.drop(columns=[t], level=0)
+                data = pd.concat([data, t_data], axis=1)
+        except Exception as e:
+            logger.exception(f"Failed to retry {t}: {e}")
+        time.sleep(1)
+    return data
+
+def _structure_and_write_data(data, conn):
+    logger.info("Structuring data for SQL...")
+    data = data.copy()
+    df_stacked = data.stack(level=0, future_stack=True).reset_index()
+    df_stacked = df_stacked.rename(columns={
+        'level_1': 'ticker_symbol',
+        'Ticker': 'ticker_symbol',
+        'Date': 'price_date',
+        'Close': 'close_price',
+        'Open': 'open_price',
+        'High': 'high_price',
+        'Low': 'low_price',
+        'Volume': 'volume',
+        'Dividends': 'dividends',
+        'Stock Splits': 'stock_splits'
+    })
+    df_stacked.columns = [col.lower().replace(' ', '_') for col in df_stacked.columns]
+    
+    logger.info("Writing historical prices to SQLite...")
+    df_stacked.to_sql('ticker_prices', conn, if_exists='replace', index=False)
+
 def _download_ticker_history(tickers, conn):
     """Downloads 1-year price history for all tickers in chunks and writes to SQLite."""
     session = get_retry_session()
     all_data = []
     
-    # yfinance 'end' date is exclusive, so add 1 day to include today
     end_date = datetime.now() + timedelta(days=1)
     start_date = end_date - timedelta(days=366)
     start_str = start_date.strftime('%Y-%m-%d')
@@ -91,37 +124,9 @@ def _download_ticker_history(tickers, conn):
         
         if missing:
             logger.info(f"Retrying {len(missing)} missing/failed tickers individually...")
-            for t in missing:
-                try:
-                    t_data = yf.download([t], start=start_str, end=end_str, group_by="ticker", actions=True, progress=False, threads=False, session=session)
-                    if not t_data.empty:
-                        # If the ticker already exists in data (but was NaN), we drop it before concatenating
-                        if isinstance(data.columns, pd.MultiIndex) and t in data.columns.levels[0]:
-                            data = data.drop(columns=[t], level=0)
-                        data = pd.concat([data, t_data], axis=1)
-                except Exception as e:
-                    logger.exception(f"Failed to retry {t}: {e}")
-                time.sleep(1)
+            data = _retry_missing_tickers(data, missing, start_str, end_str, session)
         
-        logger.info("Structuring data for SQL...")
-        data = data.copy()
-        df_stacked = data.stack(level=0, future_stack=True).reset_index()
-        df_stacked = df_stacked.rename(columns={
-            'level_1': 'ticker_symbol',
-            'Ticker': 'ticker_symbol',
-            'Date': 'price_date',
-            'Close': 'close_price',
-            'Open': 'open_price',
-            'High': 'high_price',
-            'Low': 'low_price',
-            'Volume': 'volume',
-            'Dividends': 'dividends',
-            'Stock Splits': 'stock_splits'
-        })
-        df_stacked.columns = [col.lower().replace(' ', '_') for col in df_stacked.columns]
-        
-        logger.info("Writing historical prices to SQLite...")
-        df_stacked.to_sql('ticker_prices', conn, if_exists='replace', index=False)
+        _structure_and_write_data(data, conn)
 
 def _insert_benchmark_prices(conn, benchmark):
     dates = benchmark.get("dates", [])

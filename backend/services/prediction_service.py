@@ -67,6 +67,41 @@ def build_frontend_payload(ticker, raw_ml_data, chart_history, nlp_data, info, i
         "Chart_History": chart_history
     }
 
+def _parse_fund_holdings(holdings_data):
+    top_holdings = []
+    if holdings_data is not None and not holdings_data.empty:
+        for sym, row in holdings_data.head(10).iterrows():
+            weight = None
+            company_name = sym 
+            for val in row.values:
+                if isinstance(val, (float, int)):
+                    weight = val
+                elif isinstance(val, str) and val.strip():
+                    company_name = val.strip()
+            val_str = f"{weight * 100:.2f}%" if weight is not None and weight <= 1.0 else (f"{weight:.2f}%" if weight is not None else "")
+            top_holdings.append({"symbol": sym, "name": company_name, "weight": val_str})
+    return top_holdings
+
+def _parse_fund_sectors(sector_data):
+    top_sectors = []
+    if sector_data is not None:
+        sector_dict = sector_data.to_dict() if isinstance(sector_data, pd.Series) else sector_data
+        sorted_sectors = sorted(sector_dict.items(), key=lambda item: item[1], reverse=True)
+        for raw_sector, weight in sorted_sectors:
+            if isinstance(weight, (float, int)) and weight > 0:
+                clean_sec = raw_sector.replace('_', ' ').title()
+                if clean_sec.lower() == 'realestate':
+                    clean_sec = 'Real Estate'
+                elif clean_sec.lower() == 'basicmaterials':
+                    clean_sec = 'Basic Materials'
+                elif clean_sec.lower() == 'financialservices':
+                    clean_sec = 'Financial Services'
+                elif clean_sec.lower() == 'communicationservices':
+                    clean_sec = 'Communication Services'
+                val_str = f"{weight * 100:.2f}%" if weight <= 1.0 else f"{weight:.2f}%"
+                top_sectors.append({"sector": clean_sec, "weight": val_str})
+    return top_sectors
+
 def fetch_company_fundamentals(safe_ticker):
     """Helper to fetch company info, determine asset type, and extract fund holdings/sectors if applicable."""
     stock_obj = yf.Ticker(safe_ticker)
@@ -83,36 +118,8 @@ def fetch_company_fundamentals(safe_ticker):
     
     if is_fund:
         try:
-            holdings_data = stock_obj.funds_data.top_holdings
-            if holdings_data is not None and not holdings_data.empty:
-                for sym, row in holdings_data.head(10).iterrows():
-                    weight = None
-                    company_name = sym 
-                    for val in row.values:
-                        if isinstance(val, (float, int)):
-                            weight = val
-                        elif isinstance(val, str) and val.strip():
-                            company_name = val.strip()
-                    val_str = f"{weight * 100:.2f}%" if weight is not None and weight <= 1.0 else (f"{weight:.2f}%" if weight is not None else "")
-                    top_holdings.append({"symbol": sym, "name": company_name, "weight": val_str})
-            
-            sector_data = stock_obj.funds_data.sector_weightings
-            if sector_data is not None:
-                sector_dict = sector_data.to_dict() if isinstance(sector_data, pd.Series) else sector_data
-                sorted_sectors = sorted(sector_dict.items(), key=lambda item: item[1], reverse=True)
-                for raw_sector, weight in sorted_sectors:
-                    if isinstance(weight, (float, int)) and weight > 0:
-                        clean_sec = raw_sector.replace('_', ' ').title()
-                        if clean_sec.lower() == 'realestate':
-                            clean_sec = 'Real Estate'
-                        elif clean_sec.lower() == 'basicmaterials':
-                            clean_sec = 'Basic Materials'
-                        elif clean_sec.lower() == 'financialservices':
-                            clean_sec = 'Financial Services'
-                        elif clean_sec.lower() == 'communicationservices':
-                            clean_sec = 'Communication Services'
-                        val_str = f"{weight * 100:.2f}%" if weight <= 1.0 else f"{weight:.2f}%"
-                        top_sectors.append({"sector": clean_sec, "weight": val_str})
+            top_holdings = _parse_fund_holdings(stock_obj.funds_data.top_holdings)
+            top_sectors = _parse_fund_sectors(stock_obj.funds_data.sector_weightings)
         except Exception as e:
             logger.warning(f"Failed to parse Fund data: {e}")
             

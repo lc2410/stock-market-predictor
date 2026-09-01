@@ -22,35 +22,21 @@ Chart.register(
   Title,
 );
 
-/**
- * Displays historical and projected dividend payouts using a composite bar chart.
- * Also renders confidence intervals (expected range) for future estimates.
- */
-export default function DividendChart({ data, theme }) {
-  if (!data) return null;
-  const hist = data.Chart_History;
-  if (!hist?.dividend_dates?.length) return null;
-
-  const isDark = theme === "dark";
-  const colors = {
-    brandRGB: isDark ? "168, 85, 247" : "16, 185, 129",
-    history: isDark ? "#ffffff" : "#000000",
-    grid: isDark ? "rgba(255, 255, 255, 0.05)" : "rgba(0, 0, 0, 0.05)",
-    text: isDark ? "rgba(255, 255, 255, 0.5)" : "rgba(0, 0, 0, 0.5)",
-  };
-
+function prepareChartData(data) {
   const map = new Map();
-
-  // Unify historical and projected dividend amounts by date into a single map
-  hist.dividend_dates.forEach((d, i) =>
-    map.set(d, {
-      histAmt: hist.dividend_amounts[i],
-      projAmt: null,
-      ciUpper: null,
-      ciLower: null,
-      est: false,
-    }),
-  );
+  const hist = data.Chart_History;
+  
+  if (hist?.dividend_dates?.length) {
+    hist.dividend_dates.forEach((d, i) =>
+      map.set(d, {
+        histAmt: hist.dividend_amounts[i],
+        projAmt: null,
+        ciUpper: null,
+        ciLower: null,
+        est: false,
+      }),
+    );
+  }
 
   if (data.Train_Fit_Div_Dates && data.Train_Fit_Div_Amounts) {
     data.Train_Fit_Div_Dates.forEach((d, i) => {
@@ -78,11 +64,29 @@ export default function DividendChart({ data, theme }) {
     });
   });
 
-  const sorted = Array.from(map.entries()).sort(
+  return Array.from(map.entries()).sort(
     (a, b) =>
-      new Date(typeof a[0] === "string" ? a[0].replace(/-/g, "/") : a[0]) -
-      new Date(typeof b[0] === "string" ? b[0].replace(/-/g, "/") : b[0]),
+      new Date(typeof a[0] === "string" ? a[0].replaceAll("-", "/") : a[0]) -
+      new Date(typeof b[0] === "string" ? b[0].replaceAll("-", "/") : b[0]),
   );
+}
+
+/**
+ * Displays historical and projected dividend payouts using a composite bar chart.
+ * Also renders confidence intervals (expected range) for future estimates.
+ */
+export default function DividendChart({ data, theme }) {
+  if (!data || !data.Chart_History?.dividend_dates?.length) return null;
+
+  const isDark = theme === "dark";
+  const colors = {
+    brandRGB: isDark ? "168, 85, 247" : "16, 185, 129",
+    history: isDark ? "#ffffff" : "#000000",
+    grid: isDark ? "rgba(255, 255, 255, 0.05)" : "rgba(0, 0, 0, 0.05)",
+    text: isDark ? "rgba(255, 255, 255, 0.5)" : "rgba(0, 0, 0, 0.5)",
+  };
+
+  const sorted = prepareChartData(data);
   const finalLabels = sorted.map((i) =>
     i[1].est ? `${formatDate(i[0])} (Est.)` : formatDate(i[0]),
   );
@@ -167,12 +171,7 @@ export default function DividendChart({ data, theme }) {
 
               if (ctx.datasetIndex === 0) {
                 const val = ctx.raw;
-                if (
-                  val &&
-                  val.length === 2 &&
-                  val[0] !== null &&
-                  val[1] !== null
-                ) {
+                if (val?.length === 2 && val[0] !== null && val[1] !== null) {
                   return `Expected Range: $${val[0].toFixed(2)} – $${val[1].toFixed(2)}`;
                 }
                 return null;

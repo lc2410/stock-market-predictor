@@ -109,6 +109,17 @@ def get_chart_data(price_data, div_data=None, is_crypto=False, show_all_prices=F
         "dividend_amounts": dividend_amounts
     }
 
+def _process_fetched_data(data):
+    if data.empty:
+        return None, None
+        
+    data.index = pd.to_datetime(data.index).tz_localize(None).normalize()
+    data = data[~data.index.duplicated(keep='last')]
+    data = data.dropna(subset=['Close'])
+    
+    dividends = data[data["Dividends"] > 0]
+    return data, dividends
+
 def fetch_data(ticker, target_window, is_crypto=False):
     """
     Fetches historical stock data from Yahoo Finance.
@@ -127,32 +138,21 @@ def fetch_data(ticker, target_window, is_crypto=False):
         end_date = datetime.now() + timedelta(days=1)
         days_to_fetch = (years_to_fetch * 365) + (years_to_fetch // 4) + 1 # Add leap days
         start_date = end_date - timedelta(days=days_to_fetch)
-        data = stock_ticker.history(start=start_date.strftime('%Y-%m-%d'), end=end_date.strftime('%Y-%m-%d'))
+        raw_data = stock_ticker.history(start=start_date.strftime('%Y-%m-%d'), end=end_date.strftime('%Y-%m-%d'))
         
-        if data.empty:
+        data, dividends = _process_fetched_data(raw_data)
+        if data is None:
             return None, None
-            
-        data.index = pd.to_datetime(data.index).tz_localize(None).normalize()
-        data = data[~data.index.duplicated(keep='last')]
-        data = data.dropna(subset=['Close'])
-        
-        dividends = data[data["Dividends"] > 0]
         
         has_enough_price = len(data) >= min_required_days
         
         has_enough_divs = True
-        # Check if we need more history to capture the 25 payout minimum
-        if len(dividends) > 0 and len(dividends) < 25:
-            expected_days = years_to_fetch * (365 if is_crypto else 252) * 0.90
-            if len(data) >= expected_days:
-                has_enough_divs = False
-        
-        if has_enough_price and has_enough_divs:
-            break
-            
-        # Break early if we've hit the asset's IPO date
         expected_days = years_to_fetch * (365 if is_crypto else 252) * 0.90
-        if len(data) < expected_days:
+        # Check if we need more history to capture the 25 payout minimum
+        if 0 < len(dividends) < 25 and len(data) >= expected_days:
+            has_enough_divs = False
+        
+        if (has_enough_price and has_enough_divs) or len(data) < expected_days:
             break
             
         years_to_fetch += 5
@@ -161,10 +161,7 @@ def fetch_data(ticker, target_window, is_crypto=False):
         return None, None
         
     # Isolate recent data for the price model to minimize computation
-    if len(data) >= min_required_days:
-        price_data_slice = data.iloc[-min_required_days:].copy()
-    else:
-        price_data_slice = data.copy()
+    price_data_slice = data.iloc[-min_required_days:].copy() if len(data) >= min_required_days else data.copy()
         
     # Strip non-price metrics from the price dataset
     price_data_slice = price_data_slice.drop(columns=['Dividends', 'Stock Splits'], errors='ignore')

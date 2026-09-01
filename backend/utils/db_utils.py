@@ -68,7 +68,7 @@ def get_latest_benchmarks():
         conn.close()
         return benchmarks
     except Exception as e:
-        logger.error(f"Error reading benchmarks from DB: {e}", exc_info=True)
+        logger.exception(f"Error reading benchmarks from DB: {e}")
         return []
 
 def get_latest_headlines():
@@ -91,7 +91,7 @@ def get_latest_headlines():
             })
         return headlines
     except Exception as e:
-        logger.error(f"Error reading headlines from DB: {e}", exc_info=True)
+        logger.exception(f"Error reading headlines from DB: {e}")
         return []
 
 def get_historical_prices_df():
@@ -124,5 +124,5 @@ def get_historical_prices_df():
         data.columns = data.columns.swaplevel(0, 1)
         return data
     except Exception as e:
-        logger.error(f"Error reading historical prices from DB: {e}", exc_info=True)
+        logger.exception(f"Error reading historical prices from DB: {e}")
         return pd.DataFrame()

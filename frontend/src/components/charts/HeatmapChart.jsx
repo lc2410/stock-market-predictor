@@ -5,6 +5,58 @@ import "./HeatmapChart.css";
 
 Chart.register(...registerables, TreemapController, TreemapElement);
 
+const getSymFromCtx = (raw) => {
+  if (!raw) return null;
+  return raw.g || (raw._data && Array.isArray(raw._data) ? raw._data[0].symbol : (raw._data ? raw._data.symbol : null));
+};
+
+const getBlockColorFn = (theme, groupBySector, symbolMap) => (ctx) => {
+  if (ctx.type !== "data" || !ctx.raw) return "transparent";
+  if (groupBySector && ctx.raw && ctx.raw.l === 0) {
+    return theme === "light" ? "rgba(0,0,0,0.05)" : "rgba(255,255,255,0.05)";
+  }
+  const sym = getSymFromCtx(ctx.raw);
+  const dataObj = symbolMap[sym];
+  if (!dataObj || dataObj.change === undefined) return "#444";
+  const chg = dataObj.change;
+  if (theme === "light") {
+    if (chg <= -2.5) return "#ef4444";
+    if (chg <= -1.5) return "#f87171";
+    if (chg < 0) return "#fda4af";
+    if (chg === 0) return "#cbd5e1";
+    if (chg < 1.5) return "#86efac";
+    if (chg < 2.5) return "#4ade80";
+    return "#22c55e";
+  } else {
+    if (chg <= -2.5) return "#881337";
+    if (chg <= -1.5) return "#be123c";
+    if (chg < 0) return "#e11d48";
+    if (chg === 0) return "#475569";
+    if (chg < 1.5) return "#15803d";
+    if (chg < 2.5) return "#166534";
+    return "#14532d";
+  }
+};
+
+const getLabelsFormatterFn = (symbolMap) => (ctx) => {
+  if (!ctx.raw) return "";
+  if (ctx.raw.w !== undefined && ctx.raw.h !== undefined) {
+    if (ctx.raw.w < 18 || ctx.raw.h < 12) return "";
+  }
+  const sym = getSymFromCtx(ctx.raw);
+  const dataObj = symbolMap[sym];
+  if (!dataObj) return "";
+  const lines = [dataObj.symbol];
+  if (ctx.raw.h !== undefined && ctx.raw.h < 28) {
+    return lines;
+  }
+  if (dataObj.change !== undefined) {
+    const prefix = dataObj.change > 0 ? "+" : "";
+    lines.push(`${prefix}${dataObj.change.toFixed(2)}%`);
+  }
+  return lines;
+};
+
 /**
  * Renders a treemap heatmap visualizing market constituents, optionally grouped by sector. 
  * Block sizes represent index weight/market cap, and colors indicate daily return performance.
@@ -16,8 +68,7 @@ export default function HeatmapChart({
   chartTitle,
   chartSubtitlePrice,
 }) {
-  if (!data || !data.constituents || data.constituents.length === 0)
-    return null;
+  if (!data?.constituents?.length) return null;
 
   const symbolMap = {};
   const treemapData = data.constituents.map((c) => {
@@ -34,40 +85,8 @@ export default function HeatmapChart({
     return item;
   });
 
-  // Determine block background color based on the daily return percentage and current theme
-  const getBlockColor = (ctx) => {
-    if (ctx.type !== "data" || !ctx.raw) return "transparent";
-    if (groupBySector && ctx.raw && ctx.raw.l === 0) {
-      return theme === "light" ? "rgba(0,0,0,0.05)" : "rgba(255,255,255,0.05)";
-    }
-    const sym =
-      ctx.raw.g ||
-      (ctx.raw._data && Array.isArray(ctx.raw._data)
-        ? ctx.raw._data[0].symbol
-        : ctx.raw._data
-          ? ctx.raw._data.symbol
-          : null);
-    const dataObj = symbolMap[sym];
-    if (!dataObj || dataObj.change === undefined) return "#444";
-    const chg = dataObj.change;
-    if (theme === "light") {
-      if (chg <= -2.5) return "#ef4444";
-      if (chg <= -1.5) return "#f87171";
-      if (chg < 0) return "#fda4af";
-      if (chg === 0) return "#cbd5e1";
-      if (chg < 1.5) return "#86efac";
-      if (chg < 2.5) return "#4ade80";
-      return "#22c55e";
-    } else {
-      if (chg <= -2.5) return "#881337";
-      if (chg <= -1.5) return "#be123c";
-      if (chg < 0) return "#e11d48";
-      if (chg === 0) return "#475569";
-      if (chg < 1.5) return "#15803d";
-      if (chg < 2.5) return "#166534";
-      return "#14532d";
-    }
-  };
+  const getBlockColor = getBlockColorFn(theme, groupBySector, symbolMap);
+  const getLabelsFormatter = getLabelsFormatterFn(symbolMap);
 
   const config = {
     type: "treemap",
@@ -104,35 +123,7 @@ export default function HeatmapChart({
             : false,
           labels: {
             display: true,
-            formatter: (ctx) => {
-              if (!ctx.raw) return "";
-
-              if (ctx.raw.w !== undefined && ctx.raw.h !== undefined) {
-                if (ctx.raw.w < 18 || ctx.raw.h < 12) return "";
-              }
-
-              const sym =
-                ctx.raw.g ||
-                (ctx.raw._data && Array.isArray(ctx.raw._data)
-                  ? ctx.raw._data[0].symbol
-                  : ctx.raw._data
-                    ? ctx.raw._data.symbol
-                    : null);
-              const dataObj = symbolMap[sym];
-              if (!dataObj) return "";
-
-              const lines = [dataObj.symbol];
-
-              if (ctx.raw.h !== undefined && ctx.raw.h < 28) {
-                return lines;
-              }
-
-              if (dataObj.change !== undefined) {
-                const prefix = dataObj.change > 0 ? "+" : "";
-                lines.push(`${prefix}${dataObj.change.toFixed(2)}%`);
-              }
-              return lines;
-            },
+            formatter: getLabelsFormatter,
             color: theme === "light" ? "#0f172a" : "white",
             font: (ctx) => {
               if (!ctx.raw || ctx.raw.w === undefined)
