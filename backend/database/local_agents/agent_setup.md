@@ -3,7 +3,7 @@
 ## What This Does
 This is a background agent that **automatically updates the `screener_data.db` database** with the latest market data every weekday at **4:30 PM ET** (right after the U.S. stock market closes). It runs silently in the background — no terminal windows needed, no manual commands to remember.
 
-Under the hood, it triggers the existing [`update_db.py`](file:///Users/liangchu/side%20projects/stock-market-predictor/database/update_db.py) script on a daily schedule using:
+Under the hood, it triggers the existing [`update_db.py`](file:///Users/liangchu/side%20projects/stock-market-predictor/backend/database/scripts/update_db.py) script on a daily schedule using:
 - **macOS:** `launchd` (Apple's native process scheduler)
 - **Windows:** Task Scheduler (`schtasks`)
 
@@ -17,7 +17,6 @@ Under the hood, it triggers the existing [`update_db.py`](file:///Users/liangchu
 |---|---|
 | [`agent_ctl.sh`](file:///Users/liangchu/side%20projects/stock-market-predictor/backend/database/local_agents/agent_ctl.sh) | CLI control script — start, stop, and manage the agent |
 | [`update_agent.sh`](file:///Users/liangchu/side%20projects/stock-market-predictor/backend/database/local_agents/update_agent.sh) | Wrapper script that activates the virtualenv and runs the database update |
-| [`com.marketlens.update-agent.plist`](file:///Users/liangchu/side%20projects/stock-market-predictor/backend/database/local_agents/com.marketlens.update-agent.plist) | `launchd` service configuration (schedule, paths, logging) |
 
 ### Windows Files
 
@@ -111,7 +110,7 @@ All commands are run from the `backend/database/local_agents/` directory.
 1. **macOS `launchd`** reads the `.plist` configuration and schedules the job for 4:30 PM ET every weekday.
 2. At the scheduled time, `launchd` executes `update_agent.sh`.
 3. The wrapper script activates the project's Python virtualenv (`stock-market-predictor-env/`).
-4. It runs the `update_database()` function from [`update_db.py`](file:///Users/liangchu/side%20projects/stock-market-predictor/database/update_db.py), which:
+4. It runs the `update_database()` function from [`update_db.py`](file:///Users/liangchu/side%20projects/stock-market-predictor/backend/database/scripts/update_db.py), which:
    - Fetches the latest benchmark indices and their constituents
    - Downloads 1-year price history for all tickers
    - Fetches the latest news headlines

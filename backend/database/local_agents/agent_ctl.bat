@@ -17,12 +17,7 @@ if /i "%~1"=="logs" goto logs
 goto usage
 
 :start
-    REM Check if the task already exists
-    schtasks /query /tn "%TASK_NAME%" >nul 2>&1
-    if %ERRORLEVEL%==0 (
-        echo [OK] Agent is already running.
-        exit /b 0
-    )
+    REM Always recreate the scheduled task to ensure the absolute path is up-to-date
 
     if not exist "%WRAPPER%" (
         echo [ERROR] Wrapper script not found at %WRAPPER%

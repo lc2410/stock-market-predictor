@@ -4,24 +4,50 @@
 
 PLIST_NAME="com.marketlens.update-agent"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PLIST_SRC="$SCRIPT_DIR/$PLIST_NAME.plist"
 PLIST_DST="$HOME/Library/LaunchAgents/$PLIST_NAME.plist"
 LOG_FILE="$SCRIPT_DIR/update_agent.log"
 
 case "$1" in
     start)
-        if launchctl list "$PLIST_NAME" &>/dev/null; then
-            echo "✅ Agent is already running."
-            exit 0
-        fi
-
-        if [ ! -f "$PLIST_SRC" ]; then
-            echo "❌ Plist not found at $PLIST_SRC"
-            exit 1
-        fi
-
+        # Always recreate the plist to ensure absolute paths are up-to-date
         mkdir -p "$HOME/Library/LaunchAgents"
-        ln -sf "$PLIST_SRC" "$PLIST_DST"
+        
+        cat <<EOF > "$PLIST_DST"
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>$PLIST_NAME</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>$SCRIPT_DIR/update_agent.sh</string>
+    </array>
+
+    <!-- Run at 4:30 PM ET, Monday through Friday -->
+    <key>StartCalendarInterval</key>
+    <array>
+        <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>16</integer><key>Minute</key><integer>30</integer></dict>
+        <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>16</integer><key>Minute</key><integer>30</integer></dict>
+        <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>16</integer><key>Minute</key><integer>30</integer></dict>
+        <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>16</integer><key>Minute</key><integer>30</integer></dict>
+        <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>16</integer><key>Minute</key><integer>30</integer></dict>
+    </array>
+
+    <key>StandardOutPath</key>
+    <string>$LOG_FILE</string>
+
+    <key>StandardErrorPath</key>
+    <string>$LOG_FILE</string>
+</dict>
+</plist>
+EOF
+
+        # Reload it to apply new paths
+        launchctl unload "$PLIST_DST" 2>/dev/null
         launchctl load "$PLIST_DST"
         echo "✅ Agent started. Database will update at 4:30 PM ET every weekday."
         ;;

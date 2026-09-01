@@ -33,6 +33,14 @@ export default function TopHeadlines({ headlines, onNewsClick }) {
                 key={idx}
                 className="headline-item"
                 onClick={() => onNewsClick(news)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onNewsClick(news);
+                  }
+                }}
+                tabIndex={0}
+                role="button"
               >
                 <div className="headline-publisher">{news.publisher}</div>
                 <a

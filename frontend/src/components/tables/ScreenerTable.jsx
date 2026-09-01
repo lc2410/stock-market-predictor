@@ -27,6 +27,14 @@ export default function ScreenerTable({
         <span
           className="symbol-ticker clickable"
           onClick={() => onTickerSearch && onTickerSearch(row.symbol)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              onTickerSearch && onTickerSearch(row.symbol);
+            }
+          }}
+          tabIndex={0}
+          role="button"
         >
           {row.name ? `${row.name} (${row.symbol})` : row.symbol}
         </span>

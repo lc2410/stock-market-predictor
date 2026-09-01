@@ -41,7 +41,6 @@ def get_retry_session():
         status_forcelist=(429, 500, 502, 503, 504),
     )
     adapter = HTTPAdapter(max_retries=retry)
-    session.mount('http://', adapter)
     session.mount('https://', adapter)
     return session
 
@@ -67,7 +66,7 @@ def _download_ticker_history(tickers, conn):
             chunk_data = yf.download(
                 chunk, start=start_str, end=end_str,
                 group_by="ticker", actions=True, progress=False,
-                threads=2
+                threads=2, session=session
             )
             
             if not chunk_data.empty:
@@ -94,7 +93,7 @@ def _download_ticker_history(tickers, conn):
             logger.info(f"Retrying {len(missing)} missing/failed tickers individually...")
             for t in missing:
                 try:
-                    t_data = yf.download([t], start=start_str, end=end_str, group_by="ticker", actions=True, progress=False, threads=False)
+                    t_data = yf.download([t], start=start_str, end=end_str, group_by="ticker", actions=True, progress=False, threads=False, session=session)
                     if not t_data.empty:
                         # If the ticker already exists in data (but was NaN), we drop it before concatenating
                         if isinstance(data.columns, pd.MultiIndex) and t in data.columns.levels[0]:

@@ -24,7 +24,7 @@ crontab -e
 Add the following line to the bottom of the file. This tells cron to run the update script at 16:30 (4:30 PM) every day from Monday to Friday.
 
 ```bash
-30 16 * * 1-5 cd /path/to/your/project/backend && /path/to/your/virtualenv/bin/python update_db.py >> /path/to/your/project/backend/update_db.log 2>&1
+30 16 * * 1-5 cd /path/to/your/project/backend && /path/to/your/virtualenv/bin/python database/scripts/update_db.py >> /path/to/your/project/backend/update_db.log 2>&1
 ```
 
 **Important Replacements:**
@@ -35,7 +35,7 @@ Add the following line to the bottom of the file. This tells cron to run the upd
 If your project is located at `/home/opc/stock-market-predictor` and your venv is in `/home/opc/stock-market-predictor/backend/venv`, the line would look like this:
 
 ```bash
-30 16 * * 1-5 cd /home/opc/stock-market-predictor/backend && /home/opc/stock-market-predictor/backend/venv/bin/python update_db.py >> /home/opc/stock-market-predictor/backend/cron.log 2>&1
+30 16 * * 1-5 cd /home/opc/stock-market-predictor/backend && /home/opc/stock-market-predictor/backend/venv/bin/python database/scripts/update_db.py >> /home/opc/stock-market-predictor/backend/cron.log 2>&1
 ```
 
 ### Step 4: Verify
