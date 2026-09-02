@@ -70,7 +70,7 @@ export default function MarketDataTables({
         />
       </div>
 
-      {tableData && tableData.length > 0 ? (
+      {tableData?.length > 0 ? (
         <ScreenerTable
           title={`${displayName} ${activeConfig.titleSuffix}`}
           description={activeConfig.description}

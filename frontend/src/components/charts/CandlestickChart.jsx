@@ -20,7 +20,7 @@ export default function CandlestickChart({
   chartSubtitlePrice,
   viewState,
 }) {
-  if (!data || !data.open || !data.high || !data.low) return null;
+  if (!data?.open || !data?.high || !data?.low) return null;
 
   const isDark = theme === "dark";
 
@@ -33,7 +33,7 @@ export default function CandlestickChart({
 
   // Format the raw API history data into the OHLC format required by Chart.js
   const candleData = data.history.map((close, i) => ({
-    x: new Date(data.dates[i].replace(/-/g, "/")).valueOf(),
+    x: new Date(data.dates[i].replaceAll("-", "/")).valueOf(),
     o: data.open[i],
     h: data.high[i],
     l: data.low[i],

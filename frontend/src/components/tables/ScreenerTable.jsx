@@ -45,7 +45,7 @@ export default function ScreenerTable({
     key: "price",
     cellClassName: `price-cell ${orderBy === "price" ? "sorted-column" : ""}`,
     headerClassName: orderBy === "price" ? "sorted-header" : "",
-    render: (row) => `$${parseFloat(row.price).toFixed(2)}`,
+    render: (row) => `$${Number.parseFloat(row.price).toFixed(2)}`,
   };
 
   if (type === "movers") {
@@ -54,7 +54,7 @@ export default function ScreenerTable({
       key: "prev_price",
       cellClassName: `price-cell ${orderBy === "prev_price" ? "sorted-column" : ""}`,
       headerClassName: orderBy === "prev_price" ? "sorted-header" : "",
-      render: (row) => `$${parseFloat(row.prev_price).toFixed(2)}`,
+      render: (row) => `$${Number.parseFloat(row.prev_price).toFixed(2)}`,
     });
     columns.push(currentPriceCol);
     columns.push({
@@ -93,7 +93,7 @@ export default function ScreenerTable({
       key: "dividend_payout",
       cellClassName: `price-cell ${orderBy === "dividend_payout" ? "sorted-column" : ""}`,
       headerClassName: orderBy === "dividend_payout" ? "sorted-header" : "",
-      render: (row) => `$${parseFloat(row.dividend_payout).toFixed(2)}`,
+      render: (row) => `$${Number.parseFloat(row.dividend_payout).toFixed(2)}`,
     });
     columns.push({
       header: "Last Payout Date",
@@ -108,7 +108,7 @@ export default function ScreenerTable({
       key: "dividend_yield",
       cellClassName: orderBy === "dividend_yield" ? "sorted-column" : "",
       headerClassName: orderBy === "dividend_yield" ? "sorted-header" : "",
-      render: (row) => `${parseFloat(row.dividend_yield).toFixed(2)}%`,
+      render: (row) => `${Number.parseFloat(row.dividend_yield).toFixed(2)}%`,
     });
   }
 
@@ -118,7 +118,7 @@ export default function ScreenerTable({
       key: "prev_period_high",
       cellClassName: `price-cell ${orderBy === "prev_period_high" ? "sorted-column" : ""}`,
       headerClassName: orderBy === "prev_period_high" ? "sorted-header" : "",
-      render: (row) => `$${parseFloat(row.prev_period_high).toFixed(2)}`,
+      render: (row) => `$${Number.parseFloat(row.prev_period_high).toFixed(2)}`,
     });
     columns.push({
       header: "Previous 52-Week High Price Date",
@@ -146,7 +146,7 @@ export default function ScreenerTable({
       key: "prev_period_low",
       cellClassName: `price-cell ${orderBy === "prev_period_low" ? "sorted-column" : ""}`,
       headerClassName: orderBy === "prev_period_low" ? "sorted-header" : "",
-      render: (row) => `$${parseFloat(row.prev_period_low).toFixed(2)}`,
+      render: (row) => `$${Number.parseFloat(row.prev_period_low).toFixed(2)}`,
     });
     columns.push({
       header: "Previous 52-Week Low Price Date",
@@ -175,7 +175,7 @@ export default function ScreenerTable({
       key: "volatility",
       cellClassName: orderBy === "volatility" ? "sorted-column" : "",
       headerClassName: orderBy === "volatility" ? "sorted-header" : "",
-      render: (row) => `${parseFloat(row.volatility).toFixed(2)}%`,
+      render: (row) => `${Number.parseFloat(row.volatility).toFixed(2)}%`,
     });
   }
 
@@ -186,7 +186,7 @@ export default function ScreenerTable({
       key: "rsi",
       cellClassName: orderBy === "rsi" ? "sorted-column" : "",
       headerClassName: orderBy === "rsi" ? "sorted-header" : "",
-      render: (row) => parseFloat(row.rsi).toFixed(1),
+      render: (row) => Number.parseFloat(row.rsi).toFixed(1),
     });
   }
 

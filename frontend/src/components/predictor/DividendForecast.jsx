@@ -55,19 +55,19 @@ function buildDivRows(data) {
   return Array.from(dMap.values()).sort(
     (a, b) =>
       new Date(
-        typeof b.date === "string" ? b.date.replace(/-/g, "/") : b.date,
+        typeof b.date === "string" ? b.date.replaceAll("-", "/") : b.date,
       ) -
-      new Date(typeof a.date === "string" ? a.date.replace(/-/g, "/") : a.date),
+      new Date(typeof a.date === "string" ? a.date.replaceAll("-", "/") : a.date),
   );
 }
 
 function RecentPayoutSubtitle({ data }) {
   if (data.Chart_History?.dividend_amounts?.length > 0) {
     const divs = data.Chart_History.dividend_amounts;
-    const latestDiv = divs[divs.length - 1];
+    const latestDiv = divs.at(-1);
     let changeEl = null;
     if (divs.length > 1) {
-      const prevDiv = divs[divs.length - 2];
+      const prevDiv = divs.at(-2);
       const diff = latestDiv - prevDiv;
       const pct = prevDiv !== 0 ? (diff / prevDiv) * 100 : 0;
       const isPos = diff >= 0;

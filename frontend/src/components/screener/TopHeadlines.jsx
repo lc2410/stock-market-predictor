@@ -7,7 +7,7 @@ import "./TopHeadlines.css";
  */
 export default function TopHeadlines({ headlines, onNewsClick }) {
   const recentDate =
-    headlines && headlines.length > 0 && headlines[0].time
+    headlines?.length > 0 && headlines[0].time
       ? new Date(headlines[0].time).toLocaleDateString()
       : new Date().toLocaleDateString();
 
@@ -27,8 +27,7 @@ export default function TopHeadlines({ headlines, onNewsClick }) {
       </div>
       <div className="headlines-card">
         <div className="headlines-content">
-          {headlines &&
-            headlines.map((news, idx) => (
+          {headlines?.map((news, idx) => (
               <button
                 key={idx}
                 className="headline-item"

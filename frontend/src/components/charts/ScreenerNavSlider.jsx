@@ -40,9 +40,9 @@ export default function ScreenerNavSlider({
   };
 
   let config = null;
-  if (data && data.dates && data.history) {
+  if (data?.dates && data?.history) {
     const coords = data.dates.map((d, i) => ({
-      x: new Date(d.replace(/-/g, "/")).valueOf(),
+      x: new Date(d.replaceAll("-", "/")).valueOf(),
       y: data.history[i],
     }));
 
@@ -187,7 +187,7 @@ export default function ScreenerNavSlider({
   }, [viewState?.absoluteMin, viewState?.absoluteMax, onViewChange]);
 
   useEffect(() => {
-    if (!wrapperRef.current || !viewState || !viewState.absoluteMax) return;
+    if (!wrapperRef.current || !viewState?.absoluteMax) return;
     const minTs = viewState.absoluteMin;
     const maxTs = viewState.absoluteMax;
     const lPct = ((viewState.min - minTs) / (maxTs - minTs)) * 100;

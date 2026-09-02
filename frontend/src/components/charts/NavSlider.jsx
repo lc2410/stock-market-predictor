@@ -56,11 +56,11 @@ export default function NavSlider({
     hist.dates.forEach((d, i) => historyMap.set(d, hist.prices[i]));
     const historyCoords = Array.from(historyMap, ([x, y]) => ({ x, y })).sort(
       (a, b) =>
-        new Date(typeof a.x === "string" ? a.x.replace(/-/g, "/") : a.x) -
-        new Date(typeof b.x === "string" ? b.x.replace(/-/g, "/") : b.x),
+        new Date(typeof a.x === "string" ? a.x.replaceAll("-", "/") : a.x) -
+        new Date(typeof b.x === "string" ? b.x.replaceAll("-", "/") : b.x),
     );
 
-    const anchorDate = historyCoords[historyCoords.length - 1].x;
+    const anchorDate = historyCoords.at(-1).x;
     const unifiedMap = new Map();
     if (data.Train_Fit_Dates) {
       data.Train_Fit_Dates.forEach((d, i) => {
@@ -68,8 +68,8 @@ export default function NavSlider({
       });
     }
     const projectedToday = data.Train_Fit_Prices?.length
-      ? data.Train_Fit_Prices[data.Train_Fit_Prices.length - 1]
-      : historyCoords[historyCoords.length - 1].y;
+      ? data.Train_Fit_Prices.at(-1)
+      : historyCoords.at(-1).y;
     unifiedMap.set(anchorDate, projectedToday);
     (data.Chart_Future_Dates || []).forEach((d, i) =>
       unifiedMap.set(d, data.Chart_Future_Prices[i]),
@@ -78,8 +78,8 @@ export default function NavSlider({
     // Combine historical and projected price data into a single continuous line for the overview chart
     const unifiedCoords = Array.from(unifiedMap, ([x, y]) => ({ x, y })).sort(
       (a, b) =>
-        new Date(typeof a.x === "string" ? a.x.replace(/-/g, "/") : a.x) -
-        new Date(typeof b.x === "string" ? b.x.replace(/-/g, "/") : b.x),
+        new Date(typeof a.x === "string" ? a.x.replaceAll("-", "/") : a.x) -
+        new Date(typeof b.x === "string" ? b.x.replaceAll("-", "/") : b.x),
     );
 
     config = {
@@ -285,7 +285,7 @@ export default function NavSlider({
                 const anchorDateTs = new Date(
                   data.Chart_History.dates[
                     data.Chart_History.dates.length - 1
-                  ].replace(/-/g, "/"),
+                  ].replaceAll("-", "/"),
                 ).getTime();
                 const newMin = Math.max(
                   viewState.absoluteMin,
@@ -331,7 +331,7 @@ export default function NavSlider({
             const anchorTs = new Date(
               data.Chart_History.dates[
                 data.Chart_History.dates.length - 1
-              ].replace(/-/g, "/"),
+              ].replaceAll("-", "/"),
             ).getTime();
             const minTs = viewState.absoluteMin;
             const maxTs = viewState.absoluteMax;

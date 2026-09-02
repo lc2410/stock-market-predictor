@@ -76,7 +76,7 @@ function prepareChartData(data) {
  * Also renders confidence intervals (expected range) for future estimates.
  */
 export default function DividendChart({ data, theme }) {
-  if (!data || !data.Chart_History?.dividend_dates?.length) return null;
+  if (!data?.Chart_History?.dividend_dates?.length) return null;
 
   const isDark = theme === "dark";
   const colors = {
@@ -204,10 +204,10 @@ export default function DividendChart({ data, theme }) {
   let chartSubtitlePrice = null;
   if (data.Chart_History?.dividend_amounts?.length > 0) {
     const divs = data.Chart_History.dividend_amounts;
-    const latestDiv = divs[divs.length - 1];
+    const latestDiv = divs.at(-1);
     let changeEl = null;
     if (divs.length > 1) {
-      const prevDiv = divs[divs.length - 2];
+      const prevDiv = divs.at(-2);
       const diff = latestDiv - prevDiv;
       const pct = prevDiv !== 0 ? (diff / prevDiv) * 100 : 0;
       const isPos = diff >= 0;

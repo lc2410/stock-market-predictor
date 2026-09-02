@@ -58,9 +58,9 @@ function buildPriceRows(data) {
   return Array.from(pMap.values()).sort(
     (a, b) =>
       new Date(
-        typeof b.date === "string" ? b.date.replace(/-/g, "/") : b.date,
+        typeof b.date === "string" ? b.date.replaceAll("-", "/") : b.date,
       ) -
-      new Date(typeof a.date === "string" ? a.date.replace(/-/g, "/") : a.date),
+      new Date(typeof a.date === "string" ? a.date.replaceAll("-", "/") : a.date),
   );
 }
 
@@ -69,13 +69,13 @@ function buildViewState(data) {
   const allDates = [...data.Chart_History.dates, ...data.Chart_Future_Dates];
   const absMin = new Date(
     typeof allDates[0] === "string"
-      ? allDates[0].replace(/-/g, "/")
+      ? allDates[0].replaceAll("-", "/")
       : allDates[0],
   ).getTime();
   let absMax = new Date(
-    typeof allDates[allDates.length - 1] === "string"
-      ? allDates[allDates.length - 1].replace(/-/g, "/")
-      : allDates[allDates.length - 1],
+    typeof allDates.at(-1) === "string"
+      ? allDates.at(-1).replaceAll("-", "/")
+      : allDates.at(-1),
   ).getTime();
   if (!data.Chart_Future_Dates || data.Chart_Future_Dates.length === 0) {
     absMax += 14 * 24 * 60 * 60 * 1000;
@@ -84,9 +84,9 @@ function buildViewState(data) {
   const isMobile = typeof window !== "undefined" && window.innerWidth <= 768;
   const defaultDays = isMobile ? 180 : 365;
   const todayStr =
-    data.Chart_History.dates[data.Chart_History.dates.length - 1];
+    data.Chart_History.dates.at(-1);
   const todayTime = new Date(
-    typeof todayStr === "string" ? todayStr.replace(/-/g, "/") : todayStr,
+    typeof todayStr === "string" ? todayStr.replaceAll("-", "/") : todayStr,
   ).getTime();
 
   const initialMin = Math.max(absMin, todayTime - defaultDays * 86400000);
@@ -104,10 +104,10 @@ function buildViewState(data) {
 function RecentPriceSubtitle({ data }) {
   if (data.Chart_History?.prices?.length > 0) {
     const prices = data.Chart_History.prices;
-    const latestPrice = prices[prices.length - 1];
+    const latestPrice = prices.at(-1);
     let changeEl = null;
     if (prices.length > 1) {
-      const prevPrice = prices[prices.length - 2];
+      const prevPrice = prices.at(-2);
       const diff = latestPrice - prevPrice;
       const pct = (diff / prevPrice) * 100;
       const isPos = diff >= 0;
@@ -156,9 +156,9 @@ export default function PriceForecast({ data, theme }) {
     const isMobile = typeof window !== "undefined" && window.innerWidth <= 768;
     const defaultDays = isMobile ? 180 : 365;
     const todayStr =
-      data.Chart_History.dates[data.Chart_History.dates.length - 1];
+      data.Chart_History.dates.at(-1);
     const todayTime = new Date(
-      typeof todayStr === "string" ? todayStr.replace(/-/g, "/") : todayStr,
+      typeof todayStr === "string" ? todayStr.replaceAll("-", "/") : todayStr,
     ).getTime();
 
     setViewState((prev) => {

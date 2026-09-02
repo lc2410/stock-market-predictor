@@ -56,11 +56,11 @@ export default function PriceChart({ data, theme, viewState, onChartReady }) {
   hist.dates.forEach((d, i) => historyMap.set(d, hist.prices[i]));
   const historyCoords = Array.from(historyMap, ([x, y]) => ({ x, y })).sort(
     (a, b) =>
-      new Date(typeof a.x === "string" ? a.x.replace(/-/g, "/") : a.x) -
-      new Date(typeof b.x === "string" ? b.x.replace(/-/g, "/") : b.x),
+      new Date(typeof a.x === "string" ? a.x.replaceAll("-", "/") : a.x) -
+      new Date(typeof b.x === "string" ? b.x.replaceAll("-", "/") : b.x),
   );
 
-  const anchorDate = historyCoords[historyCoords.length - 1].x;
+  const anchorDate = historyCoords.at(-1).x;
   // Combine historical and projected data into a unified timeline for continuous charting
   const unifiedMap = new Map();
 
@@ -71,8 +71,8 @@ export default function PriceChart({ data, theme, viewState, onChartReady }) {
   }
 
   const projectedToday = data.Train_Fit_Prices?.length
-    ? data.Train_Fit_Prices[data.Train_Fit_Prices.length - 1]
-    : historyCoords[historyCoords.length - 1].y;
+    ? data.Train_Fit_Prices.at(-1)
+    : historyCoords.at(-1).y;
   unifiedMap.set(anchorDate, projectedToday);
 
   data.Chart_Future_Dates.forEach((d, i) =>
@@ -80,8 +80,8 @@ export default function PriceChart({ data, theme, viewState, onChartReady }) {
   );
   const unifiedCoords = Array.from(unifiedMap, ([x, y]) => ({ x, y })).sort(
     (a, b) =>
-      new Date(typeof a.x === "string" ? a.x.replace(/-/g, "/") : a.x) -
-      new Date(typeof b.x === "string" ? b.x.replace(/-/g, "/") : b.x),
+      new Date(typeof a.x === "string" ? a.x.replaceAll("-", "/") : a.x) -
+      new Date(typeof b.x === "string" ? b.x.replaceAll("-", "/") : b.x),
   );
 
   const upperCoords = [
@@ -92,8 +92,8 @@ export default function PriceChart({ data, theme, viewState, onChartReady }) {
     })),
   ].sort(
     (a, b) =>
-      new Date(typeof a.x === "string" ? a.x.replace(/-/g, "/") : a.x) -
-      new Date(typeof b.x === "string" ? b.x.replace(/-/g, "/") : b.x),
+      new Date(typeof a.x === "string" ? a.x.replaceAll("-", "/") : a.x) -
+      new Date(typeof b.x === "string" ? b.x.replaceAll("-", "/") : b.x),
   );
 
   const lowerCoords = [
@@ -104,8 +104,8 @@ export default function PriceChart({ data, theme, viewState, onChartReady }) {
     })),
   ].sort(
     (a, b) =>
-      new Date(typeof a.x === "string" ? a.x.replace(/-/g, "/") : a.x) -
-      new Date(typeof b.x === "string" ? b.x.replace(/-/g, "/") : b.x),
+      new Date(typeof a.x === "string" ? a.x.replaceAll("-", "/") : a.x) -
+      new Date(typeof b.x === "string" ? b.x.replaceAll("-", "/") : b.x),
   );
 
   const config = {
@@ -277,10 +277,10 @@ export default function PriceChart({ data, theme, viewState, onChartReady }) {
   let chartSubtitlePrice = null;
   if (data.Chart_History?.prices?.length > 0) {
     const prices = data.Chart_History.prices;
-    const latestPrice = prices[prices.length - 1];
+    const latestPrice = prices.at(-1);
     let changeEl = null;
     if (prices.length > 1) {
-      const prevPrice = prices[prices.length - 2];
+      const prevPrice = prices.at(-2);
       const diff = latestPrice - prevPrice;
       const pct = (diff / prevPrice) * 100;
       const isPos = diff >= 0;

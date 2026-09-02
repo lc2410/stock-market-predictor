@@ -31,7 +31,7 @@ export default function LineChart({
   const textColor = isDark ? "rgba(255, 255, 255, 0.5)" : "rgba(0, 0, 0, 0.5)";
 
   const lineData = data.history.map((close, i) => ({
-    x: new Date(data.dates[i].replace(/-/g, "/")).valueOf(),
+    x: new Date(data.dates[i].replaceAll("-", "/")).valueOf(),
     y: close,
   }));
 
@@ -69,7 +69,7 @@ export default function LineChart({
                 day: "numeric",
               }),
             label: (item) => {
-              const price = parseFloat(item.raw.y).toFixed(2);
+              const price = Number.parseFloat(item.raw.y).toFixed(2);
               return `Closed Price: $${price}`;
             },
           },

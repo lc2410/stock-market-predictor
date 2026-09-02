@@ -31,10 +31,10 @@ export default function MarketCharts({
   const getInitialViewState = useCallback(() => {
     if (benchmarkData?.dates?.length > 0) {
       const minTs = new Date(
-        benchmarkData.dates[0].replace(/-/g, "/"),
+        benchmarkData.dates[0].replaceAll("-", "/"),
       ).getTime();
       const maxTs = new Date(
-        benchmarkData.dates[benchmarkData.dates.length - 1].replace(/-/g, "/"),
+        benchmarkData.dates.at(-1).replaceAll("-", "/"),
       ).getTime();
       const isMobile =
         typeof window !== "undefined" && window.innerWidth <= 768;
@@ -132,7 +132,7 @@ export default function MarketCharts({
   const recentDate =
     benchmarkData.dates && benchmarkData.dates.length > 0
       ? new Date(
-          benchmarkData.dates[benchmarkData.dates.length - 1].replace(
+          benchmarkData.dates.at(-1).replace(
             /-/g,
             "/",
           ),
@@ -145,11 +145,11 @@ export default function MarketCharts({
   const chartSubtitlePrice = (
     <div className="benchmark-price-row active-benchmark-price-row-centered">
       <span className="benchmark-price">
-        Most Recent Closed Price: ${parseFloat(benchmarkData.price).toFixed(2)}
+        Most Recent Closed Price: ${Number.parseFloat(benchmarkData.price).toFixed(2)}
       </span>
       <span className={`benchmark-change ${isPos ? "positive" : "negative"}`}>
         {isPos ? "+" : ""}
-        {parseFloat(benchmarkData.change).toFixed(2)}%
+        {Number.parseFloat(benchmarkData.change).toFixed(2)}%
       </span>
       <span
         data-tooltip={activeTooltipText}

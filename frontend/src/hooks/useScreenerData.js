@@ -22,7 +22,7 @@ export default function useScreenerData() {
   useEffect(() => {
     let ignore = false;
     timerRef.current = setInterval(() => {
-      setSteps(prev => prev.map(s => s.id === 'step-1' ? { ...s, timer: parseFloat((s.timer + 0.1).toFixed(1)) } : s));
+      setSteps(prev => prev.map(s => s.id === 'step-1' ? { ...s, timer: Number.parseFloat((s.timer + 0.1).toFixed(1)) } : s));
       
       setProgress(p => {
         const remaining = 95 - p;

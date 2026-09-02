@@ -18,7 +18,7 @@ export default function BenchmarkPerformance({
       ? new Date(
           activeBenchmarkData.dates[
             activeBenchmarkData.dates.length - 1
-          ].replace(/-/g, "/"),
+          ].replaceAll("-", "/"),
         ).toLocaleDateString()
       : "latest";
 

@@ -116,7 +116,7 @@ function ReasoningSection({ reasoning, onOpenModal }) {
             {reasoning.etf_holdings.map((h, index) => {
               const nameDisplay =
                 h.name !== h.symbol ? `${h.name} (${h.symbol})` : h.symbol;
-              const pctValue = parseFloat(h.weight) || 0;
+              const pctValue = Number.parseFloat(h.weight) || 0;
               return (
                 <div key={index} className="etf-item-container">
                   <div className="etf-item-header">
@@ -144,7 +144,7 @@ function ReasoningSection({ reasoning, onOpenModal }) {
           </strong>
           <div className="etf-flex-col">
             {reasoning.etf_sectors.map((s, i) => {
-              const pctValue = parseFloat(s.weight) || 0;
+              const pctValue = Number.parseFloat(s.weight) || 0;
               return (
                 <div key={i} className="etf-item-container">
                   <div className="etf-item-header">

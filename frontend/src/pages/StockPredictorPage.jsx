@@ -30,7 +30,7 @@ export default function StockPredictorPage({
   const recentDate =
     data.Chart_History?.dates?.length > 0
       ? new Date(
-          data.Chart_History.dates[data.Chart_History.dates.length - 1].replace(
+          data.Chart_History.dates.at(-1).replace(
             /-/g,
             "/",
           ),

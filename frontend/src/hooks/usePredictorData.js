@@ -123,7 +123,7 @@ export default function usePredictorData() {
           timerIntervalRef.current = setInterval(() => {
             setSteps((prev) =>
               prev.map((s) =>
-                s.id === stepId ? { ...s, timer: parseFloat((s.timer + 0.1).toFixed(1)) } : s
+                s.id === stepId ? { ...s, timer: Number.parseFloat((s.timer + 0.1).toFixed(1)) } : s
               )
             );
           }, 100);

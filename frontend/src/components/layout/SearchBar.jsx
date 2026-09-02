@@ -101,8 +101,7 @@ export default function SearchBar({
       e.preventDefault();
       if (
         selectedIndex >= 0 &&
-        suggestions[selectedIndex] &&
-        suggestions[selectedIndex].symbol
+        suggestions[selectedIndex]?.symbol
       ) {
         handleSelect(suggestions[selectedIndex].symbol);
       } else {

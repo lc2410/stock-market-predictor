@@ -120,7 +120,7 @@ export default function MarketScreenerPage({
             ? new Date(
                 activeBenchmarkData.dates[
                   activeBenchmarkData.dates.length - 1
-                ].replace(/-/g, "/"),
+                ].replaceAll("-", "/"),
               ).toLocaleDateString()
             : "latest"
         }
