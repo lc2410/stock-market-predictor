@@ -1,7 +1,9 @@
+import "./MetricCard.css";
+
 /**
- * Small reusable card for displaying a labeled metric value (e.g., grade, sentiment).
+ * A minimal, reusable card for displaying a single metric label and its value.
  */
-export default function MetricCard({ label, value, extraClass = '' }) {
+export default function MetricCard({ label, value, extraClass = "" }) {
   return (
     <div className="metric-card">
       <span className="metric-label">{label}</span>

@@ -1,0 +1,156 @@
+.sentiment-news-item {
+  margin-bottom: 8px;
+  text-align: left;
+  line-height: 1.4;
+}
+
+.news-item-link {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: var(--text-main);
+  text-decoration: underline;
+  cursor: pointer;
+  text-align: left;
+}
+
+.news-item-link:hover {
+  color: var(--brand-primary);
+}
+
+.news-export-inline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 6px;
+  color: var(--brand-primary);
+  text-decoration: none;
+  vertical-align: middle;
+}
+
+.news-export-inline:hover {
+  color: var(--brand-primary-hover);
+}
+
+.export-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.sentiment-metrics-grid {
+  margin-top: 10px;
+  margin-bottom: 16px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+@media screen and (max-width: 768px) {
+  .sentiment-metrics-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.sentiment-reasoning-container {
+  background: rgba(var(--brand-rgb), 0.05);
+  border: 1px solid rgba(var(--brand-rgb), 0.2);
+  border-left: 4px solid rgba(var(--brand-rgb), 1);
+  padding: 16px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.sentiment-reasoning-title {
+  color: var(--text-main);
+  display: block;
+  margin-bottom: 6px;
+}
+
+.sentiment-reasoning-empty {
+  color: var(--text-muted);
+}
+
+.sentiment-category {
+  margin-bottom: 12px;
+}
+
+.sentiment-category-mt {
+  margin-top: 16px;
+}
+
+.sentiment-list {
+  margin-top: 4px;
+  padding-left: 24px;
+  list-style-type: disc;
+}
+
+.sentiment-list-mt {
+  margin-top: 6px;
+  padding-left: 24px;
+  list-style-type: disc;
+}
+
+.sentiment-list-item {
+  margin-bottom: 6px;
+}
+
+.etf-section {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(var(--brand-rgb), 0.15);
+}
+
+.etf-section-title {
+  color: var(--text-main);
+  display: block;
+  margin-bottom: 14px;
+}
+
+.etf-flex-col {
+  display: flex;
+  flex-direction: column;
+}
+
+.etf-item-container {
+  margin-bottom: 14px;
+}
+
+.etf-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 5px;
+  font-size: 13px;
+}
+
+.etf-item-name {
+  color: var(--text-main);
+  font-weight: 500;
+}
+
+.etf-item-index {
+  color: var(--text-muted);
+  margin-right: 4px;
+}
+
+.etf-item-weight {
+  color: var(--text-main);
+  font-weight: 600;
+  font-family: monospace;
+}
+
+.text-success {
+  color: var(--brand-success);
+}
+
+.text-danger {
+  color: var(--brand-danger);
+}
+
+.text-muted {
+  color: var(--text-muted);
+}

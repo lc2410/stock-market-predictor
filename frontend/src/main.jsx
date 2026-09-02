@@ -1,5 +1,9 @@
-import { StrictMode } from 'react';
-import { createRoot } from 'react-dom/client';
+/**
+ * Application entry point.
+ * Initializes the React root and registers Chart.js global components.
+ */
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
 import {
   Chart,
   Filler,
@@ -12,13 +16,12 @@ import {
   Tooltip,
   Legend,
   Title,
-} from 'chart.js';
-import 'chartjs-adapter-date-fns';
-import annotationPlugin from 'chartjs-plugin-annotation';
-import './index.css';
-import App from './App.jsx';
+} from "chart.js";
+import "chartjs-adapter-date-fns";
+import annotationPlugin from "chartjs-plugin-annotation";
+import "./index.css";
+import App from "./App.jsx";
 
-// Register all Chart.js components globally so they are available to every chart
 Chart.register(
   Filler,
   CategoryScale,
@@ -30,11 +33,11 @@ Chart.register(
   Tooltip,
   Legend,
   Title,
-  annotationPlugin
+  annotationPlugin,
 );
 
-createRoot(document.getElementById('root')).render(
+createRoot(document.getElementById("root")).render(
   <StrictMode>
     <App />
-  </StrictMode>
+  </StrictMode>,
 );

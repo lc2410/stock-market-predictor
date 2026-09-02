@@ -1,0 +1,29 @@
+.candlestick-chart-wrapper {
+  position: relative;
+  height: 100%;
+  width: 100%;
+}
+
+.candlestick-legend-container {
+  display: flex;
+  gap: 24px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.candlestick-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.candlestick-swatch-box {
+  width: 14px;
+  height: 14px;
+  border-radius: 2px;
+}
+
+.candlestick-swatch-line {
+  width: 2px;
+  height: 14px;
+}

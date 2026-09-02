@@ -1,4 +1,5 @@
 pandas
+numpy
 yfinance
 scikit-learn
 Flask
@@ -9,4 +10,7 @@ pytest-cov
 flake8
 transformers 
 torch
-cachetools
+requests
+beautifulsoup4
+lxml
+html5lib

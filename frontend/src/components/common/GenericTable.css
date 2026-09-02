@@ -1,0 +1,28 @@
+.table-wrapper {
+  background: var(--card-bg);
+  border: 1px solid var(--outline-border);
+  border-radius: 16px;
+  overflow-x: auto;
+  max-height: 350px;
+}
+.glass-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.glass-table th {
+  background: var(--th-bg);
+  padding: 16px;
+  font-weight: 600;
+  color: var(--text-muted);
+  border-bottom: 2px solid var(--outline-border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  text-align: left;
+}
+.glass-table td {
+  padding: 16px;
+  border-bottom: 1px solid var(--table-border);
+  color: var(--text-main);
+}

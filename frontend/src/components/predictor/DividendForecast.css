@@ -1,0 +1,50 @@
+.dividend-forecast-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 20px;
+  margin-bottom: 32px;
+}
+
+.dividend-chart-container {
+  margin-bottom: 24px;
+}
+
+.dividend-chart-box {
+  position: relative;
+}
+
+.no-dividend-overlay {
+  position: absolute;
+  inset: 0;
+  background: var(--card-bg);
+  backdrop-filter: blur(4px);
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.no-dividend-overlay-inner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.no-dividend-text {
+  font-size: 36px;
+  font-weight: 800;
+  color: var(--table-border);
+  letter-spacing: 2px;
+  white-space: nowrap;
+  transform: rotate(-15deg);
+  font-family: "Inter", sans-serif;
+  user-select: none;
+}
+
+.recent-payout-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}

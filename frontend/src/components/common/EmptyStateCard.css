@@ -1,0 +1,7 @@
+.empty-state-card {
+  text-align: center;
+  color: var(--text-muted);
+  font-style: italic;
+  margin-top: 20px;
+  margin-bottom: 32px;
+}

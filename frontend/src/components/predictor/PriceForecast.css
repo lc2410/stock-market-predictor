@@ -1,0 +1,13 @@
+.price-forecast-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 20px;
+  margin-bottom: 32px;
+}
+
+.recent-price-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}

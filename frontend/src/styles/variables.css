@@ -1,0 +1,51 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");
+
+:root {
+  --brand-rgb: 16, 185, 129;
+  --bg-mesh-1: #dcfce7;
+  --bg-mesh-2: #ccfbf1;
+  --glass-bg: rgba(255, 255, 255, 0.75);
+  --glass-border: rgba(255, 255, 255, 0.5);
+  --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.05);
+  --card-bg: rgba(255, 255, 255, 0.65);
+  --input-bg: rgba(255, 255, 255, 0.9);
+  --text-main: #0f172a;
+  --text-muted: #475569;
+  --brand-primary: #10b981;
+  --brand-primary-hover: #059669;
+  --brand-success: #059669;
+  --brand-danger: #dc2626;
+
+  --chart-history: #111827;
+  --chart-grid: rgba(0, 0, 0, 0.05);
+  --nav-bg: rgba(255, 255, 255, 0.4);
+  --nav-overlay: rgba(200, 210, 220, 0.5);
+  --table-border: rgba(0, 0, 0, 0.12);
+  --outline-border: rgba(0, 0, 0, 0.18);
+  --th-bg: #f8fafc;
+}
+
+[data-theme="dark"] {
+  --brand-rgb: 168, 85, 247;
+  --bg-mesh-1: #1e1b4b;
+  --bg-mesh-2: #2e1065;
+  --glass-bg: rgba(15, 23, 42, 0.85);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+  --card-bg: rgba(30, 41, 59, 0.7);
+  --input-bg: rgba(15, 23, 42, 0.9);
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --brand-primary: #a855f7;
+  --brand-primary-hover: #c084fc;
+  --brand-success: #34d399;
+  --brand-danger: #f87171;
+
+  --chart-history: #f8fafc;
+  --chart-grid: rgba(255, 255, 255, 0.08);
+  --nav-bg: rgba(15, 23, 42, 0.5);
+  --nav-overlay: rgba(0, 0, 0, 0.65);
+  --table-border: rgba(255, 255, 255, 0.05);
+  --outline-border: rgba(255, 255, 255, 0.1);
+  --th-bg: #0f172a;
+}

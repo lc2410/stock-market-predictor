@@ -1,0 +1,23 @@
+.line-chart-wrapper {
+  position: relative;
+  height: 100%;
+  width: 100%;
+}
+
+.line-chart-legend-container {
+  display: flex;
+  gap: 24px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.line-chart-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.line-chart-legend-swatch {
+  width: 16px;
+  height: 2px;
+}
