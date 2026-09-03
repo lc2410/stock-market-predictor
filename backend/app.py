@@ -17,9 +17,9 @@ logging.basicConfig(level=logging.INFO)
 app = Flask(__name__)  # NOSONAR
 CORS(app, resources={r"/*": {"origins": ["http://localhost:5173", "http://127.0.0.1:5173"]}})
 
-app.register_blueprint(search_bp)
-app.register_blueprint(prediction_bp)
-app.register_blueprint(screener_bp)
+app.register_blueprint(search_bp, url_prefix='/api')
+app.register_blueprint(prediction_bp, url_prefix='/api')
+app.register_blueprint(screener_bp, url_prefix='/api')
 
 if __name__ == '__main__':  # pragma: no cover
     is_debug = os.environ.get("FLASK_DEBUG", "False").lower() in ["true", "1", "t"]

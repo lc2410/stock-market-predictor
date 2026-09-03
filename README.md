@@ -14,8 +14,8 @@ To ensure enterprise-grade stability, security, and performance, this applicatio
 2. **Web Server (Nginx Reverse Proxy):** Nginx acts as the secure front door to the application. It serves the compiled React static assets from `frontend/dist/` with Gzip compression and long-term immutable caching for Vite-hashed files. It intercepts incoming public HTTP traffic on port 80 and reverse-proxies validated API requests (`/search/`, `/predict/`, `/predict_stream/`, `/screener`) to the internal application layer, with SSE-specific buffering disabled for the streaming endpoint.
 3. **Application Server (Gunicorn WSGI):** Web servers and Python applications speak different protocols. Gunicorn acts as the essential Web Server Gateway Interface (WSGI) translator. It runs as a highly available background `systemd` service on internal port 5001 and manages 4 worker processes with 10 threads each that execute the Flask code in parallel, with a 120-second timeout for long-running ML predictions.
 4. **API & ML Execution:** The Flask routing layer handles API requests across three blueprint modules: **search** (Yahoo Finance autocomplete proxy), **prediction** (ML pipeline trigger with SSE streaming), and **screener** (cached market dashboard data). Prediction requests trigger the algorithmic pipeline which fetches real-time data, dynamically trains the machine learning models, and actively streams the execution progress and final multi-horizon forecast back to the client as structured JSON via SSE.
-5. **Database (SQLite):** An embedded SQLite database (`screener_data.db`) stores pre-computed market data for the screener dashboard, including benchmark index prices (Dow 30, S&P 500, Nasdaq 100, Russell 1000), constituent stock metadata and 1-year OHLCV price histories, and top market news headlines. This data is refreshed daily via an automated cron job after market close.
-6. **Automated Data Agents:** The database is kept current through scheduled background agents. In **production**, a Linux `cron` job runs the update script every weekday at 4:30 PM ET after market close. For **local development**, native platform schedulers (`launchd` on macOS, Task Scheduler on Windows) provide the same automation with simple CLI controls (`agent_ctl.sh` / `agent_ctl.bat`).
+5. **Database (SQLite):** An embedded SQLite database (`screener_data.db`) stores pre-computed market data for the screener dashboard, including benchmark index prices (Dow 30, S&P 500, Nasdaq 100, Russell 1000), constituent stock metadata and 1-year OHLCV price histories, and top market news headlines. This data is refreshed daily via an automated GitHub Actions workflow after market close.
+6. **Automated Data Agents:** The database is kept current through scheduled background agents. In **production**, a GitHub Actions workflow (`update_db.yml`) runs the update script every weekday at 5:30 PM ET, commits the fresh database, and triggers a deployment. For **local development**, native platform schedulers (`launchd` on macOS, Task Scheduler on Windows) provide the same automation with simple CLI controls (`agent_ctl.sh` / `agent_ctl.bat`).
 7. **CI/CD Pipeline:** An automated workflow that triggers on code changes to enforce strict quality control. Before any code reaches the production server, the pipeline executes security vulnerability scans, code linting (Python and JavaScript), automated test suites (Pytest + Playwright), and static code analysis (SonarCloud), ensuring only stable, validated code is deployed to the Oracle Cloud virtual machine. A post-deployment health check with automatic rollback provides zero-downtime safety.
 8. **Data Sources:** The external providers for all live and historical financial data. The backend interfaces with **Yahoo Finance** to resolve partial ticker symbols for search autocomplete, fetch extensive historical price and dividend datasets for ML training, retrieve company fundamentals for sentiment grading, and scrape news articles for NLP analysis. **Wikipedia** is scraped for benchmark index constituent lists and sector classifications.
 
@@ -95,7 +95,6 @@ stock-market-predictor/
 │   ├── variables.tf                # Terraform variable declarations
 │   ├── forecaster.nginx.conf       # Nginx reverse proxy site config
 │   └── terraform.tfvars.txt        # Template for OCI credentials
-├── crontab_setup.md                # Production cron job setup guide
 ├── pytest.ini                      # Pytest configuration
 ├── reset-env.sh                    # Virtual environment reset script
 └── sonar-project.properties        # SonarCloud static analysis configuration
@@ -251,16 +250,10 @@ terraform plan    # Reviews the exact infrastructure changes
 terraform apply   # Provisions the VCN, Subnets, and Virtual Machine
 ```
 
-### Step 3: Automated Database Updates (Cron Job)
-The Terraform `user_data` bootstrap script automatically configures a system-level cron job to refresh the screener database. In production, the cron job runs every weekday at 4:30 PM ET (after market close):
+### Step 3: Automated Database Updates (GitHub Actions)
+A scheduled GitHub Actions workflow (`update_db.yml`) automatically refreshes the screener database. In production, it runs every weekday at 5:30 PM ET (after market close):
 
-```bash
-30 16 * * 1-5 cd /home/ubuntu/stock-market-predictor/backend && \
-  /home/ubuntu/stock-market-predictor/venv/bin/python database/scripts/update_db.py \
-  >> /home/ubuntu/stock-market-predictor/backend/cron.log 2>&1
-```
-
-The update script fetches the latest benchmark indices and constituent tickers from Yahoo Finance and Wikipedia, downloads 1-year OHLCV price histories for all constituents (in chunks of 20 with exponential backoff retries), refreshes market news headlines, and writes everything to the SQLite database. The `INSERT OR REPLACE` logic safely handles market holidays without creating duplicate entries. See `crontab_setup.md` for manual setup instructions.
+The update script fetches the latest benchmark indices and constituent tickers from Yahoo Finance and Wikipedia, downloads 1-year OHLCV price histories for all constituents (in chunks of 20 with exponential backoff retries), refreshes market news headlines, and writes everything to the SQLite database. The workflow then commits the fresh database to the `main` branch, automatically triggering a deployment to the production server.
 
 ---
 

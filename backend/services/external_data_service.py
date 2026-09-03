@@ -202,42 +202,38 @@ def fetch_headlines():
     """Fetches general market news."""
     from datetime import datetime
     try:
-        spy = yf.Ticker("SPY")
-        news = spy.news
+        search_results = yf.Search("stock market", news_count=10)
+        news = search_results.news
         headlines = []
-        for news_item in news[:15]:
-            if "content" in news_item:
-                content = news_item["content"]
-                title = content.get("title", "")
-                provider = content.get("provider", {})
-                publisher = provider.get("displayName", "")
-                link_obj = content.get("clickThroughUrl", content.get("canonicalUrl", {}))
-                link = link_obj.get("url", "") if isinstance(link_obj, dict) else ""
-                time_str = content.get("pubDate", "")
-                summary = content.get("summary", "")
-                
-                try:
-                    dt = datetime.strptime(time_str, "%Y-%m-%dT%H:%M:%SZ")
-                except ValueError:
-                    dt = datetime.min
-                    
-                headlines.append({
-                    "title": title,
-                    "publisher": publisher,
-                    "link": link,
-                    "time": time_str,
-                    "dt": dt,
-                    "summary": summary
-                })
-        
-        headlines.sort(key=lambda x: x["dt"], reverse=True)
-        
-        final_headlines = []
-        for headline_item in headlines[:10]:
-            headline_item.pop("dt", None)
-            final_headlines.append(headline_item)
+        for news_item in news:
+            title = news_item.get("title", "")
+            publisher = news_item.get("publisher", "")
+            link = news_item.get("link", "")
             
-        return final_headlines
+            timestamp = news_item.get("providerPublishTime", 0)
+            if timestamp:
+                dt = datetime.fromtimestamp(timestamp)
+                time_str = dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+            else:
+                dt = datetime.min
+                time_str = ""
+                
+            summary = news_item.get("summary", "")
+            
+            headlines.append({
+                "title": title,
+                "publisher": publisher,
+                "link": link,
+                "time": time_str,
+                "dt": dt,
+                "summary": summary
+            })
+            
+        headlines.sort(key=lambda x: x["dt"], reverse=True)
+        for item in headlines:
+            item.pop("dt", None)
+            
+        return headlines
     except Exception as e:
         logger.exception(f"Error fetching headlines: {e}")
         return []

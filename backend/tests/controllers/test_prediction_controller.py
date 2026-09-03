@@ -23,7 +23,7 @@ def test_predict_endpoint_success(mock_pipeline, client):
         {"status": "processing", "step": "Gathering", "progress": 15},
         {"status": "complete", "result": {"Ticker": "AAPL", "Price": 150.0}}
     ]
-    response = client.get('/predict/AAPL')
+    response = client.get('/api/predict/AAPL')
     assert response.status_code == 200
     json_data = response.get_json()
     assert json_data['Ticker'] == 'AAPL'
@@ -35,14 +35,14 @@ def test_predict_endpoint_not_found(mock_pipeline, client):
     mock_pipeline.return_value = [
         {"status": "error", "error": "Invalid ticker"}
     ]
-    response = client.get('/predict/INVALID')
+    response = client.get('/api/predict/INVALID')
     assert response.status_code == 404
 
 @patch('controllers.prediction_controller.run_prediction_pipeline')
 def test_predict_endpoint_internal_error(mock_pipeline, client):
     """Tests that an unhandled exception returns a 500 error."""
     mock_pipeline.side_effect = Exception("Crash")
-    response = client.get('/predict/CRASH')
+    response = client.get('/api/predict/CRASH')
     assert response.status_code == 500
 
 @patch('controllers.prediction_controller.resolve_search_query')
@@ -54,7 +54,7 @@ def test_predict_stream_endpoint_success(mock_pipeline, mock_resolve, client):
         {"status": "processing", "step": "Gathering", "progress": 15},
         {"status": "complete", "result": {"Ticker": "AAPL"}}
     ]
-    response = client.get('/predict_stream/AAPL')
+    response = client.get('/api/predict_stream/AAPL')
     assert response.status_code == 200
     assert response.mimetype == 'text/event-stream'
     

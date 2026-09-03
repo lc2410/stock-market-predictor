@@ -9,12 +9,18 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-logger.info("Loading FinBERT NLP model into memory...")
-MODEL_DIR = os.path.join(os.path.dirname(__file__), "assets", "finbert_weights")
-if os.path.exists(MODEL_DIR) and (os.path.exists(os.path.join(MODEL_DIR, "pytorch_model.bin")) or os.path.exists(os.path.join(MODEL_DIR, "model.safetensors"))):
-    SENTIMENT_ANALYZER = pipeline("sentiment-analysis", model=MODEL_DIR)
-else:
-    SENTIMENT_ANALYZER = pipeline("sentiment-analysis", model="ProsusAI/finbert")
+SENTIMENT_ANALYZER = None
+
+def get_sentiment_analyzer():
+    global SENTIMENT_ANALYZER
+    if SENTIMENT_ANALYZER is None:
+        logger.info("Loading FinBERT NLP model into memory...")
+        MODEL_DIR = os.path.join(os.path.dirname(__file__), "assets", "finbert_weights")
+        if os.path.exists(MODEL_DIR) and (os.path.exists(os.path.join(MODEL_DIR, "pytorch_model.bin")) or os.path.exists(os.path.join(MODEL_DIR, "model.safetensors"))):
+            SENTIMENT_ANALYZER = pipeline("sentiment-analysis", model=MODEL_DIR)
+        else:
+            SENTIMENT_ANALYZER = pipeline("sentiment-analysis", model="ProsusAI/finbert")
+    return SENTIMENT_ANALYZER
 
 def clean_text(text):
     """Cleans HTML entities, tags, and excess whitespace from the text."""
@@ -131,7 +137,8 @@ def analyze_news_sentiment(ticker):
         ]
 
         # Use truncation=True to let the tokenizer handle any length issues safely
-        results = SENTIMENT_ANALYZER(texts_to_analyze, truncation=True)
+        analyzer = get_sentiment_analyzer()
+        results = analyzer(texts_to_analyze, truncation=True)
         score_total = 0
         scored_headlines = []
         

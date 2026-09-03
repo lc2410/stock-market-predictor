@@ -1,0 +1,44 @@
+name: Daily Database Update
+
+on:
+  schedule:
+    # Run at 5:30 PM EST (21:30 UTC)
+    - cron: '30 21 * * 1-5'
+  workflow_dispatch: # Allows manual trigger from GitHub UI
+
+jobs:
+  update-database:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+          
+      - name: Install Dependencies
+        run: pip install -r backend/requirements.txt
+          
+      - name: Update SQLite Database
+        run: PYTHONPATH=backend python backend/database/scripts/update_db.py
+        
+      - name: Commit and Push Changes
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          
+          # Only commit if the database file has changed
+          if git status --porcelain | grep -q "screener_data.db"; then
+            git add backend/database/data/screener_data.db
+            git commit -m "chore: automated daily database update"
+            git push origin main
+          else
+            echo "No database changes detected."
+          fi

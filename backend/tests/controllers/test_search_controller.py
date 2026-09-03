@@ -26,7 +26,7 @@ def test_search_endpoint_success(mock_get, client):
     }
     mock_get.return_value = mock_response
 
-    response = client.get('/search/AAPL')
+    response = client.get('/api/search/AAPL')
     assert response.status_code == 200
     data = response.get_json()
     assert len(data) == 3
@@ -39,7 +39,7 @@ def test_search_endpoint_empty_results(mock_get, client):
     mock_response.json.return_value = {"other_key": "value"}
     mock_get.return_value = mock_response
 
-    response = client.get('/search/BLAH')
+    response = client.get('/api/search/BLAH')
     assert response.status_code == 200
     assert response.get_json() == []
 
@@ -47,6 +47,6 @@ def test_search_endpoint_empty_results(mock_get, client):
 def test_search_endpoint_exception(mock_get, client):
     """Tests that a network error returns an empty list gracefully."""
     mock_get.side_effect = requests.exceptions.RequestException("Network timeout")
-    response = client.get('/search/ERROR')
+    response = client.get('/api/search/ERROR')
     assert response.status_code == 200
     assert response.get_json() == []

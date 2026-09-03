@@ -30,7 +30,7 @@ export default function useScreenerData() {
       });
     }, 100);
 
-    fetch(`/screener?t=${new Date().getTime()}`)
+    fetch(`/api/screener?t=${new Date().getTime()}`)
       .then(res => {
         if (!res.ok) throw new Error('Failed to fetch screener data');
         return res.json();

@@ -54,6 +54,12 @@
   .dropdown-selector-container {
     padding: 10px 14px;
     gap: 10px;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .dropdown-selector-label {
+    white-space: normal;
   }
 
   .dropdown-selector-select {

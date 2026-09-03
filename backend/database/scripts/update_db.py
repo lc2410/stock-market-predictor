@@ -195,6 +195,7 @@ def _write_headlines(conn):
 
 def update_database():
     """Main entry point: refreshes all screener data in SQLite."""
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     
     logger.info("Initializing database schema...")

@@ -50,7 +50,7 @@ export default function SearchBar({
     const currentId = ++latestSearchIdRef.current;
     try {
       const safeValue = encodeURIComponent(value);
-      const res = await fetch(`/search/${safeValue}`);
+      const res = await fetch(`/api/search/${safeValue}`);
       const data = await res.json();
       if (currentId !== latestSearchIdRef.current) return;
       setSuggestions(

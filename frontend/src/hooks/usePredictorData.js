@@ -85,7 +85,7 @@ export default function usePredictorData() {
     try {
       const safeTicker = encodeURIComponent(upperTicker);
       // Initialize Server-Sent Events (SSE) connection for real-time prediction updates
-      const eventSource = new EventSource(`/predict_stream/${safeTicker}`);
+      const eventSource = new EventSource(`/api/predict_stream/${safeTicker}`);
       eventSourceRef.current = eventSource;
 
       eventSource.onmessage = (e) => {

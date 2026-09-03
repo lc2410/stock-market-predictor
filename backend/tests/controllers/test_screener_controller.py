@@ -21,7 +21,7 @@ def test_screener_endpoint_success(mock_screener, client):
         "custom_scans": {},
         "headlines": []
     }
-    response = client.get('/screener')
+    response = client.get('/api/screener')
     assert response.status_code == 200
     data = response.get_json()
     assert "benchmarks" in data
@@ -31,7 +31,7 @@ def test_screener_endpoint_success(mock_screener, client):
 def test_screener_endpoint_error(mock_screener, client):
     """Tests that a service error returns a 500 response."""
     mock_screener.side_effect = Exception("DB Error")
-    response = client.get('/screener')
+    response = client.get('/api/screener')
     assert response.status_code == 500
     data = response.get_json()
     assert "error" in data
