@@ -2,28 +2,35 @@ name: Daily Database Update
 
 on:
   schedule:
-    # Run at 5:30 PM EST (21:30 UTC)
     - cron: '30 21 * * 1-5'
-  workflow_dispatch: # Allows manual trigger from GitHub UI
+  workflow_dispatch:
 
 jobs:
   update-database:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-          
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
-          cache: 'pip'
-          
-      - name: Install Dependencies
-        run: pip install -r backend/requirements.txt
-          
-      - name: Update Oracle Database
+      - name: Trigger Remote Update via SSH
+        uses: appleboy/ssh-action@v1.0.3
         env:
           DB_USER: ${{ secrets.DB_USER }}
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
           DB_DSN: ${{ secrets.DB_DSN }}
-        run: PYTHONPATH=backend python backend/database/scripts/update_db.py
+          DB_WALLET_BASE64: ${{ secrets.DB_WALLET_BASE64 }}
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          envs: DB_USER,DB_PASSWORD,DB_DSN,DB_WALLET_BASE64
+          script: |
+            set -e
+            cd /home/ubuntu/stock-market-predictor
+            echo "$DB_WALLET_BASE64" | base64 -d > /home/ubuntu/wallet.zip
+            mkdir -p /home/ubuntu/wallet
+            unzip -o /home/ubuntu/wallet.zip -d /home/ubuntu/wallet
+
+            source venv/bin/activate
+            export TNS_ADMIN=/home/ubuntu/wallet
+
+            echo "Starting daily database update on remote server..."
+            PYTHONPATH=backend python backend/database/scripts/update_db.py
+            echo "Database update completed successfully."

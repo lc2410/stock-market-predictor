@@ -108,7 +108,7 @@ def test_write_headlines(mock_fetch):
     _write_headlines(mock_conn)
     assert mock_conn.execute.call_count == 2 # Delete + Insert
 
-@patch('database.scripts.update_db.sqlite3.connect')
+@patch('database.scripts.update_db.get_engine')
 @patch('database.scripts.update_db.os.listdir')
 @patch('database.scripts.update_db.open', new_callable=MagicMock)
 @patch('database.scripts.update_db.fetch_benchmarks')
@@ -133,12 +133,16 @@ def test_update_database(mock_write_head, mock_write_bench, mock_down, mock_fetc
     update_database()
     
     mock_connect.assert_called_once()
-    mock_conn.executescript.assert_called_once()
+    
+    # Verify raw_connection was used and commit was called
+    raw_conn_mock = mock_conn.raw_connection.return_value.__enter__.return_value
+    cursor_mock = raw_conn_mock.cursor.return_value
+    assert cursor_mock.execute.call_count >= 1
+    
     mock_down.assert_called_once()
     mock_write_bench.assert_called_once()
     mock_write_head.assert_called_once()
-    mock_conn.commit.assert_called_once()
-    mock_conn.close.assert_called_once()
+    assert raw_conn_mock.commit.call_count >= 1
 
 @patch('database.scripts.update_db.yf.download')
 @patch('database.scripts.update_db.time.sleep', MagicMock())
@@ -239,7 +243,7 @@ def test_write_benchmarks_missing_fields():
     _write_benchmarks(benchmarks, mock_conn)
     assert mock_conn.execute.call_count > 4
 
-@patch('database.scripts.update_db.sqlite3.connect', MagicMock())
+@patch('database.scripts.update_db.get_engine', MagicMock())
 @patch('database.scripts.update_db.os.listdir', MagicMock(return_value=[]))
 @patch('database.scripts.update_db.fetch_benchmarks')
 @patch('database.scripts.update_db._download_ticker_history', MagicMock())

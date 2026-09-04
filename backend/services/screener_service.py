@@ -172,8 +172,8 @@ def process_custom_scans_by_benchmark(data, benchmarks_list):
     return movers_by_benchmark, scans_by_benchmark
 
 def get_screener_dashboard_data():
-    """Aggregates all screener data from local SQLite database."""
-    logger.info("Fetching fresh screener data from SQLite")
+    """Aggregates all screener data from Oracle Database."""
+    logger.info("Fetching fresh screener data from Oracle DB")
     
     benchmarks = get_latest_benchmarks()
     news = get_latest_headlines()

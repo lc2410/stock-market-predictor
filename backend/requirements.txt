@@ -13,5 +13,6 @@ torch
 requests
 beautifulsoup4
 lxml
-html5liboracledb
+html5lib
+oracledb
 SQLAlchemy
