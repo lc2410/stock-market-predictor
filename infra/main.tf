@@ -167,6 +167,8 @@ resource "oci_database_autonomous_database" "db" {
   is_free_tier = true
 
   is_mtls_connection_required = true
+  whitelisted_ips = ["0.0.0.0/0"]
+
 
   lifecycle {
     ignore_changes = [cpu_core_count, data_storage_size_in_tbs]
