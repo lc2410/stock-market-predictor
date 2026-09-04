@@ -160,10 +160,13 @@ jobs:
 
       - name: Execute Remote SSH Commands
         uses: appleboy/ssh-action@v1.0.3
+        env:
+          DB_WALLET_BASE64: ${{ secrets.DB_WALLET_BASE64 }}
         with:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
+          envs: DB_WALLET_BASE64
           script: |
             set -e
             cd /home/ubuntu/stock-market-predictor
