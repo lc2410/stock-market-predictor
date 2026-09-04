@@ -162,3 +162,19 @@ resource "oci_core_instance" "app_server" {
 output "public_ip" {
   value = oci_core_instance.app_server.public_ip
 }
+resource "oci_database_autonomous_database" "free_adb" {
+  admin_password = var.db_password
+  compartment_id = var.compartment_ocid
+  cpu_core_count = 1
+  data_storage_size_in_tbs = 1
+  db_name = "marketlensdb"
+
+  db_workload = "OLTP"
+  display_name = "MarketLens_DB"
+  is_free_tier = true
+  is_mtls_connection_required = false
+}
+
+output "db_connection_strings" {
+  value = oci_database_autonomous_database.free_adb.connection_strings
+}

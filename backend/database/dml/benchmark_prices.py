@@ -10,7 +10,7 @@ INSERT_BENCHMARK_PRICE = """
 INSERT INTO benchmark_prices (
     price_date, benchmark_symbol, close_price, open_price, high_price, low_price, volume
 )
-VALUES (?, ?, ?, ?, ?, ?, ?)
+VALUES (:1, :2, :3, :4, :5, :6, :7)
 """
 
-SELECT_BENCHMARK_PRICES = "SELECT * FROM benchmark_prices WHERE benchmark_symbol = ? ORDER BY price_date ASC"
+SELECT_BENCHMARK_PRICES = "SELECT * FROM benchmark_prices WHERE benchmark_symbol = :1 ORDER BY price_date ASC"

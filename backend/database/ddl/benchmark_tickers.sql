@@ -4,7 +4,7 @@
  * This DDL script defines the 'benchmark_tickers' junction table which maps individual 
  * stock tickers to their respective market benchmarks, along with their index weight.
  */
-CREATE TABLE IF NOT EXISTS benchmark_tickers (
+CREATE TABLE benchmark_tickers (
     benchmark_symbol VARCHAR(10),
     ticker_symbol VARCHAR(10),
     weight FLOAT,

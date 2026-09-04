@@ -4,7 +4,7 @@
  * This DDL script defines the 'benchmark_prices' table which stores historical daily 
  * OHLCV price data for the market benchmarks, linking back to the 'benchmarks' table.
  */
-CREATE TABLE IF NOT EXISTS benchmark_prices (
+CREATE TABLE benchmark_prices (
     price_date TIMESTAMP,
     benchmark_symbol VARCHAR(10),
     close_price FLOAT,

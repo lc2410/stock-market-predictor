@@ -9,13 +9,8 @@ on:
 jobs:
   update-database:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      
     steps:
       - uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
           
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -26,19 +21,9 @@ jobs:
       - name: Install Dependencies
         run: pip install -r backend/requirements.txt
           
-      - name: Update SQLite Database
+      - name: Update Oracle Database
+        env:
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          DB_DSN: ${{ secrets.DB_DSN }}
         run: PYTHONPATH=backend python backend/database/scripts/update_db.py
-        
-      - name: Commit and Push Changes
-        run: |
-          git config --global user.name 'github-actions[bot]'
-          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          
-          # Only commit if the database file has changed
-          if git status --porcelain | grep -q "screener_data.db"; then
-            git add backend/database/data/screener_data.db
-            git commit -m "chore: automated daily database update"
-            git push origin main
-          else
-            echo "No database changes detected."
-          fi

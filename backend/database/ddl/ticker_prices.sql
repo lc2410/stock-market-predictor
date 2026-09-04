@@ -4,7 +4,7 @@
  * This DDL script defines the 'ticker_prices' table which stores historical daily 
  * OHLCV price data for individual stock tickers, along with dividends and stock splits.
  */
-CREATE TABLE IF NOT EXISTS ticker_prices (
+CREATE TABLE ticker_prices (
     price_date TIMESTAMP,
     ticker_symbol VARCHAR(10),
     close_price FLOAT,

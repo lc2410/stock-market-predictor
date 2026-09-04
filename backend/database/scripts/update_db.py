@@ -1,5 +1,4 @@
-"""Database update script that fetches market data and writes it to SQLite."""
-import sqlite3
+"""Database update script that fetches market data and writes it to Oracle Autonomous Database."""
 import pandas as pd
 import yfinance as yf
 import logging
@@ -19,11 +18,11 @@ from backend.database.dml.tickers import DELETE_ALL_TICKERS, INSERT_TICKER
 from backend.database.dml.benchmark_tickers import DELETE_ALL_BENCHMARK_TICKERS, INSERT_BENCHMARK_TICKER
 from backend.database.dml.headlines import DELETE_ALL_HEADLINES, INSERT_HEADLINE
 from backend.database.dml.benchmark_prices import DELETE_ALL_BENCHMARK_PRICES, INSERT_BENCHMARK_PRICE
+from backend.utils.db_utils import get_engine
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'screener_data.db')
 DDL_DIR = os.path.join(os.path.dirname(__file__), '..', 'ddl')
 
 CHUNK_SIZE = 20
@@ -33,13 +32,7 @@ def get_retry_session():
     """Creates a requests session with exponential backoff retries."""
     session = requests.Session()
     session.headers.update({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
-    retry = Retry(
-        total=5,
-        read=5,
-        connect=5,
-        backoff_factor=2,
-        status_forcelist=(429, 500, 502, 503, 504),
-    )
+    retry = Retry(total=5, read=5, connect=5, backoff_factor=2, status_forcelist=(429, 500, 502, 503, 504))
     adapter = HTTPAdapter(max_retries=retry)
     session.mount('https://', adapter)
     return session
@@ -57,7 +50,7 @@ def _retry_missing_tickers(data, missing, start_str, end_str, session):
         time.sleep(1)
     return data
 
-def _structure_and_write_data(data, conn):
+def _structure_and_write_data(data, engine):
     logger.info("Structuring data for SQL...")
     data = data.copy()
     df_stacked = data.stack(level=0, future_stack=True).reset_index()
@@ -75,11 +68,12 @@ def _structure_and_write_data(data, conn):
     })
     df_stacked.columns = [col.lower().replace(' ', '_') for col in df_stacked.columns]
     
-    logger.info("Writing historical prices to SQLite...")
-    df_stacked.to_sql('ticker_prices', conn, if_exists='replace', index=False)
+    logger.info("Writing historical prices to Oracle DB...")
+    # if_exists='replace' will drop the table and recreate it if it exists.
+    df_stacked.to_sql('ticker_prices', engine, if_exists='replace', index=False)
 
-def _download_ticker_history(tickers, conn):
-    """Downloads 1-year price history for all tickers in chunks and writes to SQLite."""
+def _download_ticker_history(tickers, engine):
+    """Downloads 1-year price history for all tickers in chunks and writes to Oracle DB."""
     session = get_retry_session()
     all_data = []
     
@@ -96,12 +90,7 @@ def _download_ticker_history(tickers, conn):
         logger.info(f"Downloading chunk {chunk_num}/{total_chunks} ({len(chunk)} tickers)...")
         
         try:
-            chunk_data = yf.download(
-                chunk, start=start_str, end=end_str,
-                group_by="ticker", actions=True, progress=False,
-                threads=2, session=session
-            )
-            
+            chunk_data = yf.download(chunk, start=start_str, end=end_str, group_by="ticker", actions=True, progress=False, threads=2, session=session)
             if not chunk_data.empty:
                 if len(chunk) == 1 and not isinstance(chunk_data.columns, pd.MultiIndex):
                     chunk_data.columns = pd.MultiIndex.from_product([[chunk[0]], chunk_data.columns])
@@ -126,9 +115,9 @@ def _download_ticker_history(tickers, conn):
             logger.info(f"Retrying {len(missing)} missing/failed tickers individually...")
             data = _retry_missing_tickers(data, missing, start_str, end_str, session)
         
-        _structure_and_write_data(data, conn)
+        _structure_and_write_data(data, engine)
 
-def _insert_benchmark_prices(conn, benchmark):
+def _insert_benchmark_prices(cursor, benchmark):
     dates = benchmark.get("dates", [])
     closes = benchmark.get("history", [])
     opens = benchmark.get("open", [])
@@ -137,7 +126,7 @@ def _insert_benchmark_prices(conn, benchmark):
     volumes = benchmark.get("volume", [])
     
     for idx in range(len(dates)):
-        conn.execute(INSERT_BENCHMARK_PRICE, (
+        cursor.execute(INSERT_BENCHMARK_PRICE, [
             dates[idx],
             benchmark["benchmark_symbol"],
             closes[idx] if idx < len(closes) else 0,
@@ -145,64 +134,74 @@ def _insert_benchmark_prices(conn, benchmark):
             highs[idx] if idx < len(highs) else 0,
             lows[idx] if idx < len(lows) else 0,
             volumes[idx] if idx < len(volumes) else 0
-        ))
+        ])
 
-def _insert_benchmark_constituents(conn, benchmark):
+def _insert_benchmark_constituents(cursor, benchmark):
     for constituent in benchmark["tickers"]:
-        conn.execute(INSERT_TICKER, (
+        cursor.execute(INSERT_TICKER, [
             constituent["ticker_symbol"],
             constituent.get("company_name"),
             constituent.get("sector"),
             constituent.get("market_cap")
-        ))
-        conn.execute(INSERT_BENCHMARK_TICKER, (
+        ])
+        cursor.execute(INSERT_BENCHMARK_TICKER, [
             benchmark["benchmark_symbol"],
             constituent["ticker_symbol"],
             constituent.get("weight")
-        ))
+        ])
 
-def _write_benchmarks(benchmarks, conn):
-    """Writes normalized benchmark data (indices, constituents, prices) to SQLite."""
-    conn.execute(DELETE_ALL_BENCHMARK_TICKERS)
-    conn.execute(DELETE_ALL_TICKERS)
-    conn.execute(DELETE_ALL_BENCHMARK_PRICES)
-    conn.execute(DELETE_ALL_BENCHMARKS)
+def _write_benchmarks(benchmarks, cursor):
+    """Writes normalized benchmark data (indices, constituents, prices) to Oracle DB."""
+    cursor.execute(DELETE_ALL_BENCHMARK_TICKERS)
+    cursor.execute(DELETE_ALL_TICKERS)
+    cursor.execute(DELETE_ALL_BENCHMARK_PRICES)
+    cursor.execute(DELETE_ALL_BENCHMARKS)
     
     for benchmark in benchmarks:
-        conn.execute(INSERT_BENCHMARK, (
+        cursor.execute(INSERT_BENCHMARK, [
             benchmark["benchmark_symbol"],
             benchmark["benchmark_name"],
             benchmark.get("current_price"),
             benchmark.get("change_pct")
-        ))
+        ])
         
-        _insert_benchmark_prices(conn, benchmark)
-        _insert_benchmark_constituents(conn, benchmark)
+        _insert_benchmark_prices(cursor, benchmark)
+        _insert_benchmark_constituents(cursor, benchmark)
 
-def _write_headlines(conn):
-    """Fetches and writes news headlines to SQLite."""
+def _write_headlines(cursor):
+    """Fetches and writes news headlines to Oracle DB."""
     logger.info("Fetching headlines...")
     news = fetch_headlines()
-    conn.execute(DELETE_ALL_HEADLINES)
+    cursor.execute(DELETE_ALL_HEADLINES)
     for headline in news:
-        conn.execute(INSERT_HEADLINE, (
+        cursor.execute(INSERT_HEADLINE, [
             headline.get("title"),
             headline.get("publisher"),
             headline.get("link"),
             headline.get("summary"),
             headline.get("time")
-        ))
+        ])
 
 def update_database():
-    """Main entry point: refreshes all screener data in SQLite."""
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
+    """Main entry point: refreshes all screener data in Oracle DB."""
+    engine = get_engine()
     
     logger.info("Initializing database schema...")
-    for ddl_file in os.listdir(DDL_DIR):
-        if ddl_file.endswith('.sql'):
-            with open(os.path.join(DDL_DIR, ddl_file), 'r') as f:
-                conn.executescript(f.read())
+    with engine.raw_connection() as conn:
+        cursor = conn.cursor()
+        for ddl_file in os.listdir(DDL_DIR):
+            if ddl_file.endswith('.sql'):
+                with open(os.path.join(DDL_DIR, ddl_file), 'r') as f:
+                    sql_statements = f.read().split(';')
+                    for stmt in sql_statements:
+                        if stmt.strip():
+                            try:
+                                cursor.execute(stmt)
+                            except Exception as e:
+                                # Ignore ORA-00955: name is already used by an existing object
+                                if 'ORA-00955' not in str(e):
+                                    logger.warning(f"Error executing DDL {ddl_file}: {e}")
+        conn.commit()
     
     logger.info("Fetching benchmarks and constituents...")
     benchmarks = fetch_benchmarks()
@@ -215,15 +214,15 @@ def update_database():
     
     logger.info(f"Downloading 1y history for {len(tickers)} tickers in chunks...")
     if tickers:
-        _download_ticker_history(tickers, conn)
+        _download_ticker_history(tickers, engine)
     
-    logger.info("Writing normalized benchmarks to SQLite...")
-    _write_benchmarks(benchmarks, conn)
+    logger.info("Writing normalized benchmarks to Oracle DB...")
+    with engine.raw_connection() as conn:
+        cursor = conn.cursor()
+        _write_benchmarks(benchmarks, cursor)
+        _write_headlines(cursor)
+        conn.commit()
     
-    _write_headlines(conn)
-    
-    conn.commit()
-    conn.close()
     logger.info("Database update complete!")
 
 if __name__ == "__main__":
