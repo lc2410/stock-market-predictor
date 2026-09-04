@@ -169,7 +169,8 @@ jobs:
             cd /home/ubuntu/stock-market-predictor
             sudo chown -R $(whoami):$(whoami) /home/ubuntu/stock-market-predictor
             git config --global --add safe.directory /home/ubuntu/stock-market-predictor
-            git pull origin main
+            git fetch origin main
+            git reset --hard origin/main
 
             # Install/update Python dependencies
             source venv/bin/activate
