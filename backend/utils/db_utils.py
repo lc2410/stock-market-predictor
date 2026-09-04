@@ -26,7 +26,7 @@ def get_engine():
             raise ValueError("DB_DSN is not set.")
             
         encoded_dsn = urllib.parse.quote_plus(db_dsn)
-        connection_url = f"oracle+oracledb://{db_user}:{db_password}@/?dsn={encoded_dsn}"
+        connection_url = f"oracle+oracledb://{db_user}:{db_password}@/?dsn={encoded_dsn}&wallet_location=/home/ubuntu/wallet"
         engine = create_engine(connection_url)
     return engine
 

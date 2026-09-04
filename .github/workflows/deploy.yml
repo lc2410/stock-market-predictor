@@ -176,6 +176,8 @@ jobs:
             echo "$DB_WALLET_BASE64" | base64 -d > /home/ubuntu/wallet.zip
             mkdir -p /home/ubuntu/wallet
             python3 -m zipfile -e /home/ubuntu/wallet.zip /home/ubuntu/wallet
+            sed -i "s|?/network/admin|/home/ubuntu/wallet|g" /home/ubuntu/wallet/sqlnet.ora
+
 
             git reset --hard origin/main
 
@@ -216,6 +218,8 @@ jobs:
             sudo rm -f /etc/systemd/system/forecaster.service || true
             sudo rm -f /etc/nginx/sites-enabled/forecaster || true
             sudo rm -f /etc/nginx/sites-available/forecaster || true
+            sudo rm -f /etc/nginx/sites-enabled/default || true
+
 
             sudo cp infra/marketlens.nginx.conf /etc/nginx/sites-available/marketlens
             sudo ln -sf /etc/nginx/sites-available/marketlens /etc/nginx/sites-enabled/marketlens

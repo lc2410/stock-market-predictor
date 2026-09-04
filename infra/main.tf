@@ -111,7 +111,7 @@ resource "oci_core_instance" "app_server" {
     user_data           = base64encode(<<-EOF
       #!/bin/bash
       # Open OS Firewall
-      iptables -I INPUT 6 -m state --state NEW -p tcp --dport 80 -j ACCEPT
+      iptables -I INPUT 1 -m state --state NEW -p tcp --dport 80 -j ACCEPT
       netfilter-persistent save
 
       # Install Dependencies

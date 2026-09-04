@@ -27,6 +27,8 @@ jobs:
             echo "$DB_WALLET_BASE64" | base64 -d > /home/ubuntu/wallet.zip
             mkdir -p /home/ubuntu/wallet
             python3 -m zipfile -e /home/ubuntu/wallet.zip /home/ubuntu/wallet
+            sed -i "s|?/network/admin|/home/ubuntu/wallet|g" /home/ubuntu/wallet/sqlnet.ora
+
 
             source venv/bin/activate
             export TNS_ADMIN=/home/ubuntu/wallet
