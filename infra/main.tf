@@ -34,7 +34,7 @@ data "oci_core_images" "ubuntu_arm" {
 resource "oci_core_vcn" "app_vcn" {
   compartment_id = var.compartment_ocid
   cidr_blocks    = ["10.0.0.0/16"]
-  display_name   = "forecaster-vcn"
+  display_name   = "marketlens-vcn"
 }
 
 resource "oci_core_internet_gateway" "igw" {
@@ -88,7 +88,7 @@ resource "oci_core_subnet" "public_subnet" {
 resource "oci_core_instance" "app_server" {
   availability_domain = data.oci_identity_availability_domains.ads.availability_domains[0].name
   compartment_id      = var.compartment_ocid
-  display_name        = "stock-forecaster-server"
+  display_name        = "marketlens-server"
   shape               = "VM.Standard.A1.Flex"
 
   shape_config {
@@ -127,9 +127,9 @@ resource "oci_core_instance" "app_server" {
       pip install -r requirements.txt
 
       # Create Systemd Service for Gunicorn
-      cat << 'SERVICE' > /etc/systemd/system/forecaster.service
+      cat << 'SERVICE' > /etc/systemd/system/marketlens.service
       [Unit]
-      Description=Gunicorn instance to serve Stock Forecaster
+      Description=Gunicorn instance to serve MarketLens
       After=network.target
 
       [Service]
@@ -143,38 +143,56 @@ resource "oci_core_instance" "app_server" {
       WantedBy=multi-user.target
       SERVICE
 
-      systemctl start forecaster
-      systemctl enable forecaster
+      systemctl start marketlens
+      systemctl enable marketlens
 
 
     EOF
     )
   }
 
-  lifecycle {
-    ignore_changes = [
-      source_details[0].source_id,
-      metadata["user_data"],
-    ]
-  }
 }
 
 output "public_ip" {
   value = oci_core_instance.app_server.public_ip
 }
-resource "oci_database_autonomous_database" "free_adb" {
+resource "oci_database_autonomous_database" "db" {
   admin_password = var.db_password
   compartment_id = var.compartment_ocid
-  cpu_core_count = 1
-  data_storage_size_in_tbs = 1
   db_name = "marketlensdb"
 
   db_workload = "OLTP"
   display_name = "MarketLens_DB"
+
   is_free_tier = true
-  is_mtls_connection_required = false
+
+  is_mtls_connection_required = true
+
+  lifecycle {
+    ignore_changes = [cpu_core_count, data_storage_size_in_tbs]
+  }
+
+
+
+}
+
+resource "oci_database_autonomous_database_wallet" "wallet" {
+  autonomous_database_id = oci_database_autonomous_database.db.id
+  password               = var.db_password
+  base64_encode_content  = true
 }
 
 output "db_connection_strings" {
-  value = oci_database_autonomous_database.free_adb.connection_strings
+  value = oci_database_autonomous_database.db.connection_strings
+}
+
+output "exact_db_dsn" {
+  description = "Copy this EXACT string to your GitHub DB_DSN Secret"
+  value       = "${oci_database_autonomous_database.db.db_name}_high"
+}
+
+output "db_wallet_base64" {
+  description = "Base64 encoded wallet. Run `terraform output -raw db_wallet_base64 | pbcopy` and paste into GitHub Secret DB_WALLET_BASE64"
+  value       = oci_database_autonomous_database_wallet.wallet.content
+  sensitive   = true
 }
