@@ -26,7 +26,7 @@ jobs:
             cd /home/ubuntu/stock-market-predictor
             echo "$DB_WALLET_BASE64" | base64 -d > /home/ubuntu/wallet.zip
             mkdir -p /home/ubuntu/wallet
-            unzip -o /home/ubuntu/wallet.zip -d /home/ubuntu/wallet
+            python3 -m zipfile -e /home/ubuntu/wallet.zip /home/ubuntu/wallet
 
             source venv/bin/activate
             export TNS_ADMIN=/home/ubuntu/wallet
