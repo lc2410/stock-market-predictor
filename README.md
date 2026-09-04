@@ -232,6 +232,7 @@ To deploy your own instance of this architecture, you must first configure Terra
     region           = "us-ashburn-1" # Or your local region
     compartment_ocid = "ocid1.tenancy.oc1..."
     ssh_public_key   = "ssh-rsa..."
+    db_password      = "YOUR_OWN_PASSWORD"
     ```
 
 ### Step 2: Provisioning the Network and Compute Layer
