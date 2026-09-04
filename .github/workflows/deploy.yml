@@ -177,6 +177,8 @@ jobs:
             mkdir -p /home/ubuntu/wallet
             python3 -m zipfile -e /home/ubuntu/wallet.zip /home/ubuntu/wallet
             sed -i "s|?/network/admin|/home/ubuntu/wallet|g" /home/ubuntu/wallet/sqlnet.ora
+            rm -f /home/ubuntu/wallet/ewallet.pem /home/ubuntu/wallet/ewallet.p12
+
 
 
             git reset --hard origin/main
