@@ -56,12 +56,6 @@ finbert_weights/
 # Additional Testing Artifacts
 htmlcov/
 
-# Local Database Files
-*.db
-*.sqlite3
-# Do allow however, the screener_data.db file as this needs to be updated daily and is public data for the screener page.
-!backend/database/data/screener_data.db
-
 # IDE and Editor Folders
 .vscode/
 .idea/

@@ -170,6 +170,10 @@ jobs:
             sudo chown -R $(whoami):$(whoami) /home/ubuntu/stock-market-predictor
             git config --global --add safe.directory /home/ubuntu/stock-market-predictor
             git fetch origin main
+            echo "$DB_WALLET_BASE64" | base64 -d > /home/ubuntu/wallet.zip
+            mkdir -p /home/ubuntu/wallet
+            unzip -o /home/ubuntu/wallet.zip -d /home/ubuntu/wallet
+
             git reset --hard origin/main
 
             # Install/update Python dependencies
@@ -197,14 +201,20 @@ jobs:
             sudo chmod -R 755 /home/ubuntu/stock-market-predictor/frontend/dist
 
             # Deploy Nginx config (idempotent)
-            sudo cp infra/forecaster.nginx.conf /etc/nginx/sites-available/forecaster
-            sudo ln -sf /etc/nginx/sites-available/forecaster /etc/nginx/sites-enabled/forecaster
+            sudo systemctl stop forecaster || true
+            sudo systemctl disable forecaster || true
+            sudo rm -f /etc/systemd/system/forecaster.service || true
+            sudo rm -f /etc/nginx/sites-enabled/forecaster || true
+            sudo rm -f /etc/nginx/sites-available/forecaster || true
+
+            sudo cp infra/marketlens.nginx.conf /etc/nginx/sites-available/marketlens
+            sudo ln -sf /etc/nginx/sites-available/marketlens /etc/nginx/sites-enabled/marketlens
             sudo nginx -t && sudo systemctl reload nginx
 
             # Recreate Systemd Service for Gunicorn to point to the new backend folder and port
-            cat << 'SERVICE' | sudo tee /etc/systemd/system/forecaster.service
+            cat << 'SERVICE' | sudo tee /etc/systemd/system/marketlens.service
             [Unit]
-            Description=Gunicorn instance to serve Stock Forecaster API
+            Description=Gunicorn instance to serve Stock MarketLens API
             After=network.target
 
             [Service]
@@ -212,6 +222,7 @@ jobs:
             Group=www-data
             WorkingDirectory=/home/ubuntu/stock-market-predictor/backend
             Environment="PATH=/home/ubuntu/stock-market-predictor/venv/bin"
+            Environment="TNS_ADMIN=/home/ubuntu/wallet"
             ExecStart=/home/ubuntu/stock-market-predictor/venv/bin/gunicorn -w 4 --worker-class gthread --threads 10 -b 127.0.0.1:5001 --timeout 120 app:app
 
             [Install]
@@ -220,8 +231,8 @@ jobs:
 
             # Restart Flask/Gunicorn API server
             sudo systemctl daemon-reload
-            sudo systemctl restart forecaster
+            sudo systemctl restart marketlens
             sleep 10
 
             # Health check — Nginx should serve the React app at /
-            curl --fail http://localhost/ || (git reset --hard HEAD~1 && sudo systemctl restart forecaster && exit 1)
+            curl --fail http://localhost/ || (git reset --hard HEAD~1 && sudo systemctl restart marketlens && exit 1)

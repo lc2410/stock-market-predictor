@@ -1,8 +1,9 @@
 """Database utilities for general connections and read operations for benchmarks, prices, and news data."""
-import sqlite3
 import pandas as pd
 import os
 import logging
+import urllib.parse
+from sqlalchemy import create_engine
 from database.dml.benchmarks import SELECT_ALL_BENCHMARKS
 from database.dml.benchmark_tickers import SELECT_BENCHMARK_CONSTITUENTS
 from database.dml.benchmark_prices import SELECT_BENCHMARK_PRICES
@@ -11,17 +12,30 @@ from database.dml.ticker_prices import SELECT_HISTORICAL_PRICES
 
 logger = logging.getLogger(__name__)
 
-DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'database', 'data', 'screener_data.db')
+engine = None
+
+def get_engine():
+    global engine
+    if engine is None:
+        db_user = os.environ.get("DB_USER", "ADMIN")
+        db_password = os.environ.get("DB_PASSWORD", "")
+        db_dsn = os.environ.get("DB_DSN", "")
+        
+        if not db_dsn:
+            logger.error("DB_DSN environment variable is not set. Cannot connect to Oracle DB.")
+            raise ValueError("DB_DSN is not set.")
+            
+        encoded_dsn = urllib.parse.quote_plus(db_dsn)
+        connection_url = f"oracle+oracledb://{db_user}:{db_password}@/?dsn={encoded_dsn}"
+        engine = create_engine(connection_url)
+    return engine
 
 def get_db_connection():
-    """Returns a SQLite connection, raising FileNotFoundError if the DB doesn't exist."""
-    if not os.path.exists(DB_PATH):
-        logger.error(f"Database not found at {DB_PATH}. Please run update_db.py first.")
-        raise FileNotFoundError("Database not found.")
-    return sqlite3.connect(DB_PATH)
+    """Returns a DBAPI connection from the SQLAlchemy engine."""
+    return get_engine().raw_connection()
 
 def get_latest_benchmarks():
-    """Reads all benchmarks with their price history and constituent tickers from SQLite."""
+    """Reads all benchmarks with their price history and constituent tickers from Oracle DB."""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -33,7 +47,7 @@ def get_latest_benchmarks():
         for row in benchmark_rows:
             symbol, name, price, change = row
             
-            cursor.execute(SELECT_BENCHMARK_PRICES, (symbol,))
+            cursor.execute(SELECT_BENCHMARK_PRICES, [symbol])
             price_rows = cursor.fetchall()
             
             benchmark = {
@@ -42,7 +56,7 @@ def get_latest_benchmarks():
                 "price": price,
                 "change": change,
                 "history": [price_row[2] for price_row in price_rows],
-                "dates": [price_row[0] for price_row in price_rows],
+                "dates": [price_row[0].strftime('%Y-%m-%d') if hasattr(price_row[0], 'strftime') else price_row[0] for price_row in price_rows],
                 "open": [price_row[3] for price_row in price_rows],
                 "high": [price_row[4] for price_row in price_rows],
                 "low": [price_row[5] for price_row in price_rows],
@@ -50,7 +64,7 @@ def get_latest_benchmarks():
                 "constituents": []
             }
             
-            cursor.execute(SELECT_BENCHMARK_CONSTITUENTS, (symbol,))
+            cursor.execute(SELECT_BENCHMARK_CONSTITUENTS, [symbol])
             constituent_rows = cursor.fetchall()
             
             for constituent_row in constituent_rows:
@@ -72,7 +86,7 @@ def get_latest_benchmarks():
         return []
 
 def get_latest_headlines():
-    """Reads all cached news headlines from SQLite."""
+    """Reads all cached news headlines from Oracle DB."""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -95,19 +109,20 @@ def get_latest_headlines():
         return []
 
 def get_historical_prices_df():
-    """Reads ticker price history from SQLite and reshapes it into a MultiIndex DataFrame."""
+    """Reads ticker price history from Oracle DB and reshapes it into a MultiIndex DataFrame."""
     try:
-        conn = get_db_connection()
-        df_stacked = pd.read_sql(SELECT_HISTORICAL_PRICES, conn)
-        conn.close()
+        eng = get_engine()
+        df_stacked = pd.read_sql(SELECT_HISTORICAL_PRICES, eng)
         
         if df_stacked.empty:
             return pd.DataFrame()
             
+        # Oracle might return column names in lowercase depending on SQLAlchemy
+        df_stacked.columns = [c.lower() for c in df_stacked.columns]
+        
         df_stacked = df_stacked.rename(columns={
             'price_date': 'Date',
             'ticker_symbol': 'Ticker',
-            'ticker': 'Ticker',
             'close_price': 'Close',
             'open_price': 'Open',
             'high_price': 'High',

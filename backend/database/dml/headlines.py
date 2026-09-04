@@ -8,7 +8,7 @@ DELETE_ALL_HEADLINES = "DELETE FROM headlines"
 
 INSERT_HEADLINE = """
 INSERT INTO headlines (title, publisher, link, summary, published_at)
-VALUES (?, ?, ?, ?, ?)
+VALUES (:1, :2, :3, :4, :5)
 """
 
 SELECT_ALL_HEADLINES = "SELECT title, publisher, link, summary, published_at FROM headlines ORDER BY id DESC"

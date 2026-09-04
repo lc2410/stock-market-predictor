@@ -7,10 +7,10 @@ It includes statements for deleting, inserting, and selecting benchmark summary 
 DELETE_ALL_BENCHMARKS = "DELETE FROM benchmarks"
 
 INSERT_BENCHMARK = """
-INSERT OR REPLACE INTO benchmarks (
+INSERT INTO benchmarks (
     benchmark_symbol, benchmark_name, current_price, change_pct
 )
-VALUES (?, ?, ?, ?)
+VALUES (:1, :2, :3, :4)
 """
 
 SELECT_ALL_BENCHMARKS = "SELECT * FROM benchmarks"

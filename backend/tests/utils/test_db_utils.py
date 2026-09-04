@@ -11,18 +11,18 @@ from utils.db_utils import (
 )
 
 
-@patch('utils.db_utils.os.path.exists')
-@patch('utils.db_utils.sqlite3.connect')
-def test_get_db_connection_success(mock_connect, mock_exists):
-    mock_exists.return_value = True
+@patch('utils.db_utils.get_engine')
+def test_get_db_connection_success(mock_get_engine):
     conn = get_db_connection()
-    mock_connect.assert_called_once()
-    assert conn == mock_connect.return_value
+    mock_get_engine.assert_called_once()
+    assert conn == mock_get_engine.return_value.raw_connection.return_value
 
-@patch('utils.db_utils.os.path.exists')
-def test_get_db_connection_not_found(mock_exists):
-    mock_exists.return_value = False
-    with pytest.raises(FileNotFoundError):
+@patch.dict('os.environ', {}, clear=True)
+def test_get_db_connection_not_found():
+    # Clear the cached engine module variable
+    import utils.db_utils
+    utils.db_utils.engine = None
+    with pytest.raises(ValueError, match="DB_DSN is not set"):
         get_db_connection()
 
 @patch('utils.db_utils.get_db_connection')
@@ -84,11 +84,11 @@ def test_get_latest_headlines_exception(mock_get_conn):
     headlines = get_latest_headlines()
     assert headlines == []
 
-@patch('utils.db_utils.get_db_connection')
+@patch('utils.db_utils.get_engine')
 @patch('utils.db_utils.pd.read_sql')
-def test_get_historical_prices_df(mock_read_sql, mock_get_conn):
-    mock_conn = MagicMock()
-    mock_get_conn.return_value = mock_conn
+def test_get_historical_prices_df(mock_read_sql, mock_get_engine):
+    mock_eng = MagicMock()
+    mock_get_engine.return_value = mock_eng
     
     # Mock empty dataframe
     mock_read_sql.return_value = pd.DataFrame()
@@ -114,8 +114,8 @@ def test_get_historical_prices_df(mock_read_sql, mock_get_conn):
     assert 'AAPL' in df2.columns.levels[0]
     assert 'MSFT' in df2.columns.levels[0]
 
-@patch('utils.db_utils.get_db_connection')
-def test_get_historical_prices_df_exception(mock_get_conn):
-    mock_get_conn.side_effect = Exception("DB Error")
+@patch('utils.db_utils.get_engine')
+def test_get_historical_prices_df_exception(mock_get_engine):
+    mock_get_engine.side_effect = Exception("DB Error")
     df = get_historical_prices_df()
     assert df.empty

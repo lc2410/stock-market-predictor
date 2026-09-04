@@ -5,3 +5,4 @@ variable "private_key_path" {}
 variable "region" {}
 variable "compartment_ocid" {}
 variable "ssh_public_key" {}
+variable "db_password" {}

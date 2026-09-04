@@ -14,8 +14,8 @@ To ensure enterprise-grade stability, security, and performance, this applicatio
 2. **Web Server (Nginx Reverse Proxy):** Nginx acts as the secure front door to the application. It serves the compiled React static assets from `frontend/dist/` with Gzip compression and long-term immutable caching for Vite-hashed files. It intercepts incoming public HTTP traffic on port 80 and reverse-proxies validated API requests (`/search/`, `/predict/`, `/predict_stream/`, `/screener`) to the internal application layer, with SSE-specific buffering disabled for the streaming endpoint.
 3. **Application Server (Gunicorn WSGI):** Web servers and Python applications speak different protocols. Gunicorn acts as the essential Web Server Gateway Interface (WSGI) translator. It runs as a highly available background `systemd` service on internal port 5001 and manages 4 worker processes with 10 threads each that execute the Flask code in parallel, with a 120-second timeout for long-running ML predictions.
 4. **API & ML Execution:** The Flask routing layer handles API requests across three blueprint modules: **search** (Yahoo Finance autocomplete proxy), **prediction** (ML pipeline trigger with SSE streaming), and **screener** (cached market dashboard data). Prediction requests trigger the algorithmic pipeline which fetches real-time data, dynamically trains the machine learning models, and actively streams the execution progress and final multi-horizon forecast back to the client as structured JSON via SSE.
-5. **Database (SQLite):** An embedded SQLite database (`screener_data.db`) stores pre-computed market data for the screener dashboard, including benchmark index prices (Dow 30, S&P 500, Nasdaq 100, Russell 1000), constituent stock metadata and 1-year OHLCV price histories, and top market news headlines. This data is refreshed daily via an automated GitHub Actions workflow after market close.
-6. **Automated Data Agents:** The database is kept current through scheduled background agents. In **production**, a GitHub Actions workflow (`update_db.yml`) runs the update script every weekday at 5:30 PM ET, commits the fresh database, and triggers a deployment. For **local development**, native platform schedulers (`launchd` on macOS, Task Scheduler on Windows) provide the same automation with simple CLI controls (`agent_ctl.sh` / `agent_ctl.bat`).
+5. **Database (Oracle Autonomous Database):** An embedded Oracle Autonomous Database database (``) stores pre-computed market data for the screener dashboard, including benchmark index prices (Dow 30, S&P 500, Nasdaq 100, Russell 1000), constituent stock metadata and 1-year OHLCV price histories, and top market news headlines. This data is refreshed daily via an automated GitHub Actions workflow after market close.
+6. **Automated Data Agents:** The database is kept current through scheduled background agents. A GitHub Actions workflow (`update_db.yml`) runs the update script every weekday at 5:30 PM ET to pipe the data directly to the Oracle database.
 7. **CI/CD Pipeline:** An automated workflow that triggers on code changes to enforce strict quality control. Before any code reaches the production server, the pipeline executes security vulnerability scans, code linting (Python and JavaScript), automated test suites (Pytest + Playwright), and static code analysis (SonarCloud), ensuring only stable, validated code is deployed to the Oracle Cloud virtual machine. A post-deployment health check with automatic rollback provides zero-downtime safety.
 8. **Data Sources:** The external providers for all live and historical financial data. The backend interfaces with **Yahoo Finance** to resolve partial ticker symbols for search autocomplete, fetch extensive historical price and dividend datasets for ML training, retrieve company fundamentals for sentiment grading, and scrape news articles for NLP analysis. **Wikipedia** is scraped for benchmark index constituent lists and sector classifications.
 
@@ -36,11 +36,9 @@ stock-market-predictor/
 │   │   ├── screener_controller.py      # /screener dashboard data
 │   │   └── search_controller.py        # /search Yahoo Finance proxy
 │   ├── database/
-│   │   ├── data/                   # SQLite database file (screener_data.db)
 │   │   ├── ddl/                    # SQL schema definitions (CREATE TABLE)
 │   │   ├── dml/                    # Parameterized SQL query modules
 │   │   ├── scripts/                # Database update script (update_db.py)
-│   │   └── local_agents/           # Background agent schedulers (macOS/Windows)
 │   ├── ml_models/                  # Scikit-learn ML pipeline & NLP engine
 │   │   ├── price_forecasting.py    # Multi-horizon price prediction
 │   │   ├── dividend_forecasting.py # Dividend payout prediction
@@ -58,7 +56,7 @@ stock-market-predictor/
 │   │   ├── services/               # Service layer tests
 │   │   └── utils/                  # Utility function tests
 │   └── utils/                      # Helper utilities and shared logic
-│       ├── db_utils.py             # SQLite connection & query helpers
+│       ├── db_utils.py             # Oracle Autonomous Database connection & query helpers
 │       ├── ml_model_utils.py       # Model instantiation & training helpers
 │       └── service_utils.py        # Technical indicators & chart data builders
 ├── frontend/
@@ -93,7 +91,7 @@ stock-market-predictor/
 ├── infra/                          # Terraform IaC & Nginx configuration
 │   ├── main.tf                     # OCI network + compute provisioning
 │   ├── variables.tf                # Terraform variable declarations
-│   ├── forecaster.nginx.conf       # Nginx reverse proxy site config
+│   ├── marketlens.nginx.conf       # Nginx reverse proxy site config
 │   └── terraform.tfvars.txt        # Template for OCI credentials
 ├── pytest.ini                      # Pytest configuration
 ├── reset-env.sh                    # Virtual environment reset script
@@ -103,7 +101,7 @@ stock-market-predictor/
 ---
 
 ## Core Features
-* **Market Screener Dashboard:** A full-featured homepage that provides a bird's-eye view of the broader market. It displays real-time benchmark performance for 4 major indices (Dow 30, S&P 500, Nasdaq 100, Russell 1000) with interactive chart visualizations switchable between **Line**, **Candlestick (OHLC)**, and **Heatmap (Treemap)** modes with optional sector grouping. A suite of 10 quantitative screener tables — including Day Gainers, Day Losers, Most Active, 52-Week High/Low Breakouts, Overbought (RSI > 70), Oversold (RSI < 30), Unusual Volume, Most Volatile, and Biggest Dividends — allows users to scan the market universe filtered by benchmark. A sidebar displays the latest market news headlines. All screener data is served from a local SQLite database that is refreshed daily after market close.
+* **Market Screener Dashboard:** A full-featured homepage that provides a bird's-eye view of the broader market. It displays real-time benchmark performance for 4 major indices (Dow 30, S&P 500, Nasdaq 100, Russell 1000) with interactive chart visualizations switchable between **Line**, **Candlestick (OHLC)**, and **Heatmap (Treemap)** modes with optional sector grouping. A suite of 10 quantitative screener tables — including Day Gainers, Day Losers, Most Active, 52-Week High/Low Breakouts, Overbought (RSI > 70), Oversold (RSI < 30), Unusual Volume, Most Volatile, and Biggest Dividends — allows users to scan the market universe filtered by benchmark. A sidebar displays the latest market news headlines. All screener data is served from the Oracle Autonomous Database database that is refreshed daily after market close.
 * **Searching for a Publicly Traded Asset:** A debounced, native search bar that proxies the Yahoo Finance query API through the Flask backend. This provides live, CORS-friendly autocomplete and allows users to search across a vast universe of publicly traded assets, including standard equities, ETFs, Mutual Funds, Cryptocurrencies, Market Indices, and specialized assets like REITs and CEFs.
 * **Sentiment Grading Analysis:** The system synthesizes quantitative ML outputs, Wall Street consensus ratings, fundamental metrics (like EPS, Beta, Market Cap, and Yield), and NLP-driven news sentiment to assign an overarching AI Stock Grade (A+ through F) and a General Sentiment (Bullish/Bearish/Neutral). It dynamically adapts its grading criteria based on the asset class, ensuring funds or cryptocurrencies aren't penalized for lacking traditional corporate metrics. For ETFs and Mutual Funds, it also dynamically extracts and visualizes the top 10 holdings and economic sector exposures.
     * **In-App News Reader:** The NLP reasoning block isolates the strongest positive and negative news catalysts driving the asset. Users can choose to instantly open external links directly to the original publisher, or click the headline to trigger a native, glassmorphic modal overlay that presents a clean, localized summary of the article without ever leaving the application.
@@ -190,32 +188,31 @@ The backend utilizes the HuggingFace `transformers` library to load the highly s
     npm i
     cd ..
     ```
-3.  **Initialize the Screener Database:**
+3.  **Configure Environment Variables:**
+    You must provide credentials to connect to your Oracle Autonomous Database.
+    ```bash
+    export DB_USER="admin"
+    export DB_PASSWORD="your_password"
+    export DB_DSN="tcps://adb.region.oraclecloud.com..."
+    ```
+
+4.  **Initialize the Database (Only required for new databases):**
+    If your Oracle DB is completely empty, run this to build the tables and fetch market data:
     ```bash
     PYTHONPATH=. python backend/database/scripts/update_db.py
     ```
-4.  **Run the Backend Server:**
+
+5.  **Run the Backend Server:**
     ```bash
     python backend/app.py
     ```
-5.  **Run the Frontend Application (separate terminal):**
+6.  **Run the Frontend Application (separate terminal):**
     ```bash
     cd frontend
     npm run dev
     ```
     The app will be available at `http://localhost:5173` with Vite proxying API requests to the Flask backend on port 5001.
 
-6.  **(Optional) Enable Local Background Database Updates:**
-    ```bash
-    cd backend/database/local_agents
-    chmod +x agent_ctl.sh update_agent.sh  # macOS only
-    ./agent_ctl.sh start                   # macOS (launchd)
-    # or
-    agent_ctl.bat start                    # Windows (Task Scheduler)
-    ```
-    This registers a background agent that automatically refreshes the screener database every weekday at 4:30 PM ET after market close. See `backend/database/local_agents/agent_setup.md` for full documentation.
-
----
 
 ## Cloud Infrastructure (Terraform / OCI)
 The production environment is hosted on an **Oracle Cloud Infrastructure (OCI)** ARM-based instance (`VM.Standard.A1.Flex` shape with 2 OCPUs and 12GB RAM) running Ubuntu 22.04 LTS.
@@ -235,6 +232,7 @@ To deploy your own instance of this architecture, you must first configure Terra
     region           = "us-ashburn-1" # Or your local region
     compartment_ocid = "ocid1.tenancy.oc1..."
     ssh_public_key   = "ssh-rsa..."
+    db_password      = "YOUR_OWN_PASSWORD"
     ```
 
 ### Step 2: Provisioning the Network and Compute Layer
@@ -253,7 +251,7 @@ terraform apply   # Provisions the VCN, Subnets, and Virtual Machine
 ### Step 3: Automated Database Updates (GitHub Actions)
 A scheduled GitHub Actions workflow (`update_db.yml`) automatically refreshes the screener database. In production, it runs every weekday at 5:30 PM ET (after market close):
 
-The update script fetches the latest benchmark indices and constituent tickers from Yahoo Finance and Wikipedia, downloads 1-year OHLCV price histories for all constituents (in chunks of 20 with exponential backoff retries), refreshes market news headlines, and writes everything to the SQLite database. The workflow then commits the fresh database to the `main` branch, automatically triggering a deployment to the production server.
+The update script fetches the latest benchmark indices and constituent tickers from Yahoo Finance and Wikipedia, downloads 1-year OHLCV price histories for all constituents (in chunks of 20 with exponential backoff retries), refreshes market news headlines, and writes everything directly to the Oracle Autonomous Database. Because the database is fully decoupled from the application server, this data is instantly available in production without requiring a repository commit or a server redeployment.
 
 ---
 
@@ -300,7 +298,7 @@ The continuous integration and continuous delivery/deployment lifecycle is fully
 ## Live Production Environment
 The application provides a clean, responsive web interface featuring interactive Chart.js visualizations to display historical trends, future forecasts, candlestick charts, and market heatmaps.
 
-You can access the live production environment hosted on Oracle Cloud here: [http://150.136.36.70](http://150.136.36.70)
+You can access the live production environment hosted on Oracle Cloud here: [http://150.136.46.128](http://150.136.46.128)
 *(Note: This is currently accessible via direct IP until domain name resolution and SSL certification are configured).*
 
 ---
@@ -310,7 +308,7 @@ You can access the live production environment hosted on Oracle Cloud here: [htt
 * **CI/CD & DevOps:** GitHub Actions, SonarCloud (Static Analysis)
 * **Web Serving:** Nginx (Reverse Proxy), Gunicorn (WSGI)
 * **Back-End:** Python 3.12, Flask, Flask-CORS, Server-Sent Events (SSE)
-* **Database:** SQLite
+* **Database:** Oracle Autonomous Database
 * **Machine Learning:** Scikit-Learn (`HistGradientBoosting`), Pandas, NumPy, HuggingFace Transformers (FinBERT), PyTorch
 * **Data Sourcing:** yfinance (Yahoo Finance API), BeautifulSoup / lxml (Wikipedia Scraping), Requests
 * **Front-End:** React 18, React Router v7, Vite, JavaScript, CSS, Lucide React (Icons)

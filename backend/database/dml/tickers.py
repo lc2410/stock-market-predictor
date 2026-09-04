@@ -7,6 +7,6 @@ It includes statements for deleting and inserting individual stock ticker metada
 DELETE_ALL_TICKERS = "DELETE FROM tickers"
 
 INSERT_TICKER = """
-INSERT OR REPLACE INTO tickers (ticker_symbol, company_name, sector, market_cap)
-VALUES (?, ?, ?, ?)
+INSERT INTO tickers (ticker_symbol, company_name, sector, market_cap)
+VALUES (:1, :2, :3, :4)
 """

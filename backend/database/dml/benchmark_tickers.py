@@ -7,8 +7,8 @@ It includes statements for managing the many-to-many relationship between benchm
 DELETE_ALL_BENCHMARK_TICKERS = "DELETE FROM benchmark_tickers"
 
 INSERT_BENCHMARK_TICKER = """
-INSERT OR REPLACE INTO benchmark_tickers (benchmark_symbol, ticker_symbol, weight)
-VALUES (?, ?, ?)
+INSERT INTO benchmark_tickers (benchmark_symbol, ticker_symbol, weight)
+VALUES (:1, :2, :3)
 """
 
 SELECT_BENCHMARK_CONSTITUENTS = """
@@ -20,5 +20,5 @@ SELECT
     bt.weight
 FROM benchmark_tickers bt
 JOIN tickers t ON bt.ticker_symbol = t.ticker_symbol
-WHERE bt.benchmark_symbol = ?
+WHERE bt.benchmark_symbol = :1
 """
