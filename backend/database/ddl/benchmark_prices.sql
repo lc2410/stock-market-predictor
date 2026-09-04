@@ -6,11 +6,11 @@
  */
 CREATE TABLE benchmark_prices (
     price_date TIMESTAMP,
-    benchmark_symbol VARCHAR(10),
-    close_price FLOAT,
-    open_price FLOAT,
-    high_price FLOAT,
-    low_price FLOAT,
-    volume INTEGER,
+    benchmark_symbol VARCHAR2(10),
+    close_price NUMBER,
+    open_price NUMBER,
+    high_price NUMBER,
+    low_price NUMBER,
+    volume NUMBER,
     FOREIGN KEY (benchmark_symbol) REFERENCES benchmarks(benchmark_symbol)
 );

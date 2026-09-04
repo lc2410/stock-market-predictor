@@ -6,13 +6,13 @@
  */
 CREATE TABLE ticker_prices (
     price_date TIMESTAMP,
-    ticker_symbol VARCHAR(10),
-    close_price FLOAT,
-    dividends FLOAT,
-    high_price FLOAT,
-    low_price FLOAT,
-    open_price FLOAT,
-    stock_splits FLOAT,
-    volume INTEGER,
+    ticker_symbol VARCHAR2(10),
+    close_price NUMBER,
+    dividends NUMBER,
+    high_price NUMBER,
+    low_price NUMBER,
+    open_price NUMBER,
+    stock_splits NUMBER,
+    volume NUMBER,
     FOREIGN KEY (ticker_symbol) REFERENCES tickers(ticker_symbol)
 );
