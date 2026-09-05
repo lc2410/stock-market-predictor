@@ -1,5 +1,6 @@
 """Database update script that fetches market data and writes it to Oracle Autonomous Database."""
 import pandas as pd
+from sqlalchemy.types import FLOAT, Integer, String
 import yfinance as yf
 import logging
 import os
@@ -70,7 +71,7 @@ def _structure_and_write_data(data, engine):
     
     logger.info("Writing historical prices to Oracle DB...")
     # if_exists='replace' will drop the table and recreate it if it exists.
-    df_stacked.to_sql('ticker_prices', engine, if_exists='replace', index=False)
+    df_stacked.to_sql('ticker_prices', engine, if_exists='replace', index=False, dtype={'ticker_symbol': String(10), 'close_price': FLOAT, 'open_price': FLOAT, 'high_price': FLOAT, 'low_price': FLOAT, 'dividends': FLOAT, 'stock_splits': FLOAT, 'volume': Integer})
 
 def _download_ticker_history(tickers, engine):
     """Downloads 1-year price history for all tickers in chunks and writes to Oracle DB."""
@@ -189,7 +190,7 @@ def update_database():
     logger.info("Initializing database schema...")
     with engine.raw_connection() as conn:
         cursor = conn.cursor()
-        for ddl_file in os.listdir(DDL_DIR):
+        for ddl_file in sorted(os.listdir(DDL_DIR)):
             if ddl_file.endswith('.sql'):
                 with open(os.path.join(DDL_DIR, ddl_file), 'r') as f:
                     sql_statements = f.read().split(';')

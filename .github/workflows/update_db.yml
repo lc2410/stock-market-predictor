@@ -24,6 +24,8 @@ jobs:
           script: |
             set -e
             cd /home/ubuntu/stock-market-predictor
+            git pull origin main
+
             echo "$DB_WALLET_BASE64" | base64 -d > /home/ubuntu/wallet.zip
             mkdir -p /home/ubuntu/wallet
             python3 -m zipfile -e /home/ubuntu/wallet.zip /home/ubuntu/wallet

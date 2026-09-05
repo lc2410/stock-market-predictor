@@ -27,8 +27,14 @@ def get_engine():
             
         encoded_password = urllib.parse.quote_plus(db_password)
         encoded_dsn = urllib.parse.quote_plus(db_dsn)
-        connection_url = f"oracle+oracledb://{db_user}:{encoded_password}@/?dsn={encoded_dsn}&wallet_location=/home/ubuntu/wallet&wallet_password={encoded_password}"
-        engine = create_engine(connection_url)
+        connection_url = f"oracle+oracledb://{db_user}:{encoded_password}@/?dsn={encoded_dsn}"
+        engine = create_engine(
+            connection_url,
+            connect_args={
+                "wallet_location": "/home/ubuntu/wallet",
+                "wallet_password": db_password
+            }
+        )
     return engine
 
 def get_db_connection():
@@ -80,11 +86,13 @@ def get_latest_benchmarks():
                 
             benchmarks.append(benchmark)
             
-        conn.close()
         return benchmarks
     except Exception as e:
         logger.exception(f"Error reading benchmarks from DB: {e}")
         return []
+    finally:
+        if "conn" in locals():
+            conn.close()
 
 def get_latest_headlines():
     """Reads all cached news headlines from Oracle DB."""
@@ -93,7 +101,6 @@ def get_latest_headlines():
         cursor = conn.cursor()
         cursor.execute(SELECT_ALL_HEADLINES)
         rows = cursor.fetchall()
-        conn.close()
         
         headlines = []
         for row in rows:
@@ -108,6 +115,9 @@ def get_latest_headlines():
     except Exception as e:
         logger.exception(f"Error reading headlines from DB: {e}")
         return []
+    finally:
+        if "conn" in locals():
+            conn.close()
 
 def get_historical_prices_df():
     """Reads ticker price history from Oracle DB and reshapes it into a MultiIndex DataFrame."""
