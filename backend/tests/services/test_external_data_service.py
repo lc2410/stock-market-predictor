@@ -81,22 +81,26 @@ def test_fetch_benchmarks(mock_ticker, mock_session, mock_download, mock_fetch_t
     assert res[0]["benchmark_symbol"] == "^DJI"
     assert res[0]["tickers"][0]["ticker_symbol"] == "AAPL"
 
-@patch('services.external_data_service.yf.Search')
-def test_fetch_headlines(mock_search):
+@patch('services.external_data_service.yf.Ticker')
+def test_fetch_headlines(mock_ticker):
     mock_instance = MagicMock()
     mock_instance.news = [
         {
-            "title": "Test News",
-            "publisher": "Test Provider",
-            "link": "http://test.com",
-            "providerPublishTime": 1672574400,
-            "summary": "Summary"
+            "content": {
+                "title": "Test News",
+                "provider": {"displayName": "Test Provider"},
+                "clickThroughUrl": {"url": "http://test.com"},
+                "pubDate": "2023-01-01T12:00:00Z",
+                "summary": "Summary"
+            }
         },
         {} # missing fields
     ]
-    mock_search.return_value = mock_instance
+    mock_ticker.return_value = mock_instance
     
     headlines = fetch_headlines()
     assert len(headlines) == 2
     assert headlines[0]["title"] == "Test News"
     assert headlines[0]["link"] == "http://test.com"
+    assert headlines[0]["time"] == "2023-01-01T12:00:00Z"
+    assert headlines[0]["summary"] == "Summary"
