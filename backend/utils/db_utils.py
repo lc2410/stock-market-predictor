@@ -31,7 +31,7 @@ def get_engine():
         engine = create_engine(
             connection_url,
             connect_args={
-                "wallet_location": "/home/ubuntu/wallet",
+                "wallet_location": os.environ.get("TNS_ADMIN", "/home/ubuntu/wallet"),
                 "wallet_password": db_password
             }
         )

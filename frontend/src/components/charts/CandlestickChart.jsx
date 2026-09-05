@@ -34,10 +34,10 @@ export default function CandlestickChart({
   // Format the raw API history data into the OHLC format required by Chart.js
   const candleData = data.history.map((close, i) => ({
     x: new Date(data.dates[i].replaceAll("-", "/")).valueOf(),
-    o: data.open[i],
-    h: data.high[i],
-    l: data.low[i],
-    c: close,
+    o: parseFloat(data.open[i]),
+    h: parseFloat(data.high[i]),
+    l: parseFloat(data.low[i]),
+    c: parseFloat(close),
   }));
 
   const config = {
@@ -46,8 +46,8 @@ export default function CandlestickChart({
       datasets: [
         {
           data: candleData,
-          backgroundColors: { up: posColor, down: negColor, unchanged: "#999" },
-          borderColors: { up: posColor, down: negColor, unchanged: "#999" },
+          color: { up: posColor, down: negColor, unchanged: "#999" },
+          borderColor: { up: posColor, down: negColor, unchanged: "#999" },
           borderWidth: 1,
         },
       ],

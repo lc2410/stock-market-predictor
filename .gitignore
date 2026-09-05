@@ -60,3 +60,7 @@ htmlcov/
 .vscode/
 .idea/
 *.swp
+
+# Oracle Wallet
+backend/wallet/
+backend/.env

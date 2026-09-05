@@ -173,46 +173,94 @@ The backend utilizes the HuggingFace `transformers` library to load the highly s
 ---
 
 ## Local Development Setup
+
 1.  **Clone the repository:**
     ```bash
     git clone https://github.com/lc2410/stock-market-predictor.git
     cd stock-market-predictor
     ```
+
 2.  **Environment Setup (Python 3.12 + Node v22):**
+    
+    **Mac / Linux:**
     ```bash
-    python3 -m venv venv
-    source venv/bin/activate
+    python3 -m venv stock-market-predictor-env
+    source stock-market-predictor-env/bin/activate
     pip install -r backend/requirements.txt
     python backend/ml_models/scripts/download_pretrained_model.py
     cd frontend
     npm i
     cd ..
     ```
-3.  **Configure Environment Variables:**
-    You must provide credentials to connect to your Oracle Autonomous Database.
-    ```bash
-    export DB_USER="admin"
-    export DB_PASSWORD="your_password"
-    export DB_DSN="tcps://adb.region.oraclecloud.com..."
+
+    **Windows (PowerShell):**
+    ```powershell
+    python -m venv stock-market-predictor-env
+    .\stock-market-predictor-env\Scripts\Activate.ps1
+    pip install -r backend\requirements.txt
+    python backend\ml_models\scripts\download_pretrained_model.py
+    cd frontend
+    npm i
+    cd ..
     ```
 
-4.  **Initialize the Database (Only required for new databases):**
-    If your Oracle DB is completely empty, run this to build the tables and fetch market data:
+3.  **Configure Oracle Database Connection:**
+    The backend connects directly to the production Oracle Autonomous Database securely via mTLS. You'll only need to do this once every 5 years.
+    
+    *For Mac / Linux:*
+    Run this to automatically SSH into the production server, download the secure Oracle Wallet, extract it, and configure your local environment:
     ```bash
-    PYTHONPATH=. python backend/database/scripts/update_db.py
+    cd backend
+    ./run_local.sh --sync
+    cd ..
     ```
 
-5.  **Run the Backend Server:**
-    ```bash
-    python backend/app.py
+    *For Windows (PowerShell):*
+    ```powershell
+    cd backend
+    .\run_local.ps1 -sync
+    cd ..
     ```
-6.  **Run the Frontend Application (separate terminal):**
+
+4.  **Run the Backend Server:**
+    After configuring the initial Oracle Database Connection, you'll only need to run these commands below to locally run the backend.
+
+    *Mac / Linux:*
+    ```bash
+    cd backend
+    ./run_local.sh
+    ```
+
+    *Windows (PowerShell):*
+    ```powershell
+    cd backend
+    .\run_local.ps1
+    ```
+
+5.  **Run the Frontend Application (separate terminal):**
     ```bash
     cd frontend
     npm run dev
     ```
     The app will be available at `http://localhost:5173` with Vite proxying API requests to the Flask backend on port 5001.
 
+## Maintenance: Oracle Wallet Rotation (Every 5 Years)
+Oracle Autonomous Database mTLS wallets expire every 5 years for security purposes. When your wallet expires (around September 2031), follow these steps to rotate it:
+
+1. **Download the New Wallet:**
+   - Log into Oracle Cloud Infrastructure (OCI).
+   - Navigate to your Autonomous Database -> **Database Connection**.
+   - Click **Download Wallet**, enter a password, and download the `.zip` file.
+
+2. **Update the Live Server (GitHub Actions):**
+   - On your Mac terminal, convert the zip to base64: `base64 -i path/to/Wallet.zip | pbcopy`
+   - Go to your GitHub Repository -> **Settings** -> **Secrets and variables** -> **Actions**.
+   - Edit the `DB_WALLET_BASE64` secret and paste the new base64 string.
+   - The next time `deploy.yml` or `update_db.yml` runs, it will automatically unpack the new wallet on the production server.
+
+3. **Update Your Local Environment (Automated):**
+   - Simply run `./run_local.sh --sync` in your `backend/` directory.
+   - This will automatically SSH into the production server, download the new wallet, unpack it, and configure the internal paths for your Mac.
 
 ## Cloud Infrastructure (Terraform / OCI)
 The production environment is hosted on an **Oracle Cloud Infrastructure (OCI)** ARM-based instance (`VM.Standard.A1.Flex` shape with 2 OCPUs and 12GB RAM) running Ubuntu 22.04 LTS.

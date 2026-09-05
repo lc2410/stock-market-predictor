@@ -199,39 +199,25 @@ def fetch_benchmarks():
     return results
 
 def fetch_headlines():
-    """Fetches general market news."""
-    from datetime import datetime
+    """Fetches general market news (via S&P 500 headlines) to guarantee summaries are included."""
     try:
-        search_results = yf.Search("stock market", news_count=10)
-        news = search_results.news
+        news = yf.Ticker("^GSPC").news
         headlines = []
         for news_item in news:
-            title = news_item.get("title", "")
-            publisher = news_item.get("publisher", "")
-            link = news_item.get("link", "")
-            
-            timestamp = news_item.get("providerPublishTime", 0)
-            if timestamp:
-                dt = datetime.fromtimestamp(timestamp)
-                time_str = dt.strftime("%Y-%m-%dT%H:%M:%SZ")
-            else:
-                dt = datetime.min
-                time_str = ""
-                
-            summary = news_item.get("summary", "")
+            content = news_item.get("content", {})
+            title = content.get("title", "")
+            publisher = (content.get("provider") or {}).get("displayName", "")
+            link = (content.get("clickThroughUrl") or {}).get("url", "")
+            time_str = content.get("pubDate", "")
+            summary = content.get("summary", "")
             
             headlines.append({
                 "title": title,
                 "publisher": publisher,
                 "link": link,
                 "time": time_str,
-                "dt": dt,
                 "summary": summary
             })
-            
-        headlines.sort(key=lambda x: x["dt"], reverse=True)
-        for item in headlines:
-            item.pop("dt", None)
             
         return headlines
     except Exception as e:
