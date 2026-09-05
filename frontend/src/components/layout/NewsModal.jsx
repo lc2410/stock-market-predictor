@@ -48,7 +48,7 @@ export default function NewsModal({ article, onClose }) {
           <strong id="modalPublisher">{article.publisher}</strong>
           <a
             id="modalExternalLink"
-            href={article.url}
+            href={article.link}
             target="_blank"
             rel="noopener noreferrer"
             title="Open external article"
@@ -63,7 +63,7 @@ export default function NewsModal({ article, onClose }) {
               {article.summary.replace(/\[?(?:\.\.\.|…)\]?\s*$/, "").trimEnd()}
               {article.summary.match(/\[?(?:\.\.\.|…)\]?\s*$/) && (
                 <a
-                  href={article.url}
+                  href={article.link}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="read-more-inline"
@@ -76,7 +76,7 @@ export default function NewsModal({ article, onClose }) {
             <p id="modalSummary" className="modal-summary-empty">
               A preview summary is not available for this article.{" "}
               <a
-                href={article.url}
+                href={article.link}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="read-more-inline"
