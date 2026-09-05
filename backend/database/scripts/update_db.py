@@ -137,17 +137,20 @@ def _insert_benchmark_prices(cursor, benchmark):
             volumes[idx] if idx < len(volumes) else 0
         ])
 
-def _insert_benchmark_constituents(cursor, benchmark):
+def _insert_benchmark_constituents(cursor, benchmark, inserted_tickers):
     for constituent in benchmark["tickers"]:
-        cursor.execute(INSERT_TICKER, [
-            constituent["ticker_symbol"],
-            constituent.get("company_name"),
-            constituent.get("sector"),
-            constituent.get("market_cap")
-        ])
+        ticker = constituent["ticker_symbol"]
+        if ticker not in inserted_tickers:
+            cursor.execute(INSERT_TICKER, [
+                ticker,
+                constituent.get("company_name"),
+                constituent.get("sector"),
+                constituent.get("market_cap")
+            ])
+            inserted_tickers.add(ticker)
         cursor.execute(INSERT_BENCHMARK_TICKER, [
             benchmark["benchmark_symbol"],
-            constituent["ticker_symbol"],
+            ticker,
             constituent.get("weight")
         ])
 
@@ -158,6 +161,8 @@ def _write_benchmarks(benchmarks, cursor):
     cursor.execute(DELETE_ALL_BENCHMARK_PRICES)
     cursor.execute(DELETE_ALL_BENCHMARKS)
     
+    inserted_tickers = set()
+    
     for benchmark in benchmarks:
         cursor.execute(INSERT_BENCHMARK, [
             benchmark["benchmark_symbol"],
@@ -167,7 +172,7 @@ def _write_benchmarks(benchmarks, cursor):
         ])
         
         _insert_benchmark_prices(cursor, benchmark)
-        _insert_benchmark_constituents(cursor, benchmark)
+        _insert_benchmark_constituents(cursor, benchmark, inserted_tickers)
 
 def _write_headlines(cursor):
     """Fetches and writes news headlines to Oracle DB."""
