@@ -10,5 +10,5 @@ CREATE TABLE headlines (
     publisher VARCHAR2(4000),
     link VARCHAR2(4000),
     summary VARCHAR2(4000),
-    published_at VARCHAR2(4000)
+    published_at TIMESTAMP
 );

@@ -109,7 +109,7 @@ def get_latest_headlines():
                 "publisher": row[1],
                 "link": row[2],
                 "summary": row[3],
-                "time": row[4]
+                "time": row[4].strftime('%Y-%m-%dT%H:%M:%SZ') if hasattr(row[4], 'strftime') else (row[4] or "")
             })
         return headlines
     except Exception as e:
